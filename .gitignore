@@ -1,0 +1,26 @@
+# Only the live app (nvn-app/) is tracked.
+#
+# What follows is the pre-merge scaffolding from May 2026 — the phase-by-phase
+# tree that was copied over a fresh Laravel 11 install to produce nvn-app/. It
+# is superseded, it is not runnable on its own (see SETUP.md), and tracking it
+# invites editing the wrong copy. Still on disk, just not in the repository.
+/app/
+/bootstrap/
+/config/
+/database/
+/resources/
+/routes/
+/_integration/
+/SETUP.md
+
+# Local Claude Code settings (machine-specific permission grants)
+.claude/settings.local.json
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# The Laravel app carries its own .gitignore at nvn-app/.gitignore, which
+# already excludes .env, /vendor, the SQLite database, uploaded documents and
+# notary assets under storage/app/private, and the brand uploads in public/brand.

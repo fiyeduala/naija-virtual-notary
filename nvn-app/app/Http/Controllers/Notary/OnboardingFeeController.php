@@ -1,0 +1,140 @@
+<?php
+
+namespace App\Http\Controllers\Notary;
+
+use App\Http\Controllers\Controller;
+use App\Models\Payment;
+use App\Models\PlatformSetting;
+use App\Services\PaystackService;
+use App\Support\AuditLogger;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
+
+class OnboardingFeeController extends Controller
+{
+    public function __construct(private PaystackService $paystack) {}
+
+    /** Landing page that explains the fee and starts payment. */
+    public function show(): View|RedirectResponse
+    {
+        $profile = Auth::user()->notaryProfile;
+
+        if ($profile?->onboarding_fee_paid_at) {
+            return redirect()->route('notary.onboarding.status');
+        }
+
+        $amount = (int) PlatformSetting::get('onboarding_fee_ngn', config('nvn.onboarding_fee_ngn'));
+
+        return view('notary.onboarding.fee', [
+            'amountDisplay' => '₦' . number_format($amount / 100, 2),
+        ]);
+    }
+
+    /** Initialize the Paystack transaction and redirect to hosted checkout. */
+    public function pay(): RedirectResponse
+    {
+        $user = Auth::user();
+        $amount = (int) PlatformSetting::get('onboarding_fee_ngn', config('nvn.onboarding_fee_ngn'));
+        $reference = $this->paystack->reference('onb');
+
+        Payment::create([
+            'user_id'            => $user->id,
+            'type'               => 'onboarding_fee',
+            'amount'             => $amount,
+            'currency'           => 'NGN',
+            'paystack_reference' => $reference,
+            'status'             => 'pending',
+        ]);
+
+        $init = $this->paystack->initializeTransaction(
+            email: $user->email,
+            amountMinor: $amount,
+            reference: $reference,
+            callbackUrl: route('notary.onboarding.callback'),
+            currency: 'NGN',
+            metadata: ['purpose' => 'onboarding_fee', 'user_id' => $user->id],
+        );
+
+        if (! $init['authorization_url']) {
+            return back()->withErrors(['payment' => 'Could not start payment. Please try again.']);
+        }
+
+        return redirect()->away($init['authorization_url']);
+    }
+
+    /**
+     * Paystack redirects the user back here after payment. We verify, but the
+     * webhook is the authoritative confirmation — this just gives the user
+     * immediate feedback.
+     */
+    public function callback(): RedirectResponse
+    {
+        $reference = request('reference') ?? request('trxref');
+
+        if (! $reference) {
+            return redirect()->route('notary.onboarding.fee')
+                ->withErrors(['payment' => 'No payment reference returned.']);
+        }
+
+        try {
+            $data = $this->paystack->verifyTransaction($reference);
+        } catch (\Throwable $e) {
+            return redirect()->route('notary.onboarding.status')
+                ->with('status', 'We are confirming your payment. This page will update shortly.');
+        }
+
+        if ($this->paystack->isSuccessful($data)) {
+            $this->markPaid($reference);
+        }
+
+        return redirect()->route('notary.onboarding.status');
+    }
+
+    public function status(): View
+    {
+        $profile = Auth::user()->notaryProfile;
+
+        return view('notary.onboarding.status', ['profile' => $profile]);
+    }
+
+    /** Shared logic: flip payment + profile to paid (idempotent). */
+    public static function markPaid(string $reference): void
+    {
+        $payment = Payment::where('paystack_reference', $reference)
+            ->where('type', 'onboarding_fee')
+            ->first();
+
+        if ($payment) {
+            static::settle($payment);
+        }
+    }
+
+    /**
+     * Activate the application behind a cleared onboarding fee.
+     *
+     * Separate from markPaid() so a fee paid by bank transfer into the company
+     * account unlocks the applicant in exactly the same way as one paid on the
+     * checkout page — there is no second, quieter version of "paid".
+     */
+    public static function settle(Payment $payment): void
+    {
+        if ($payment->status === 'successful') {
+            return; // already processed
+        }
+
+        $payment->update([
+            'status'       => 'successful',
+            'completed_at' => $payment->completed_at ?? now(),
+        ]);
+
+        $profile = $payment->user->notaryProfile;
+        if ($profile && ! $profile->onboarding_fee_paid_at) {
+            $profile->update(['onboarding_fee_paid_at' => now()]);
+            AuditLogger::record('notary.onboarding_fee_paid', 'notary_profile', $profile->id, [
+                'reference' => $payment->paystack_reference,
+                'settled'   => $payment->settlement_method ?? 'paystack',
+            ], $payment->user_id);
+        }
+    }
+}

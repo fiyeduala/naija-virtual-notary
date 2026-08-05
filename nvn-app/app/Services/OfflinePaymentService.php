@@ -1,0 +1,210 @@
+<?php
+
+namespace App\Services;
+
+use App\Http\Controllers\Notary\OnboardingFeeController;
+use App\Models\NotarizationRequest;
+use App\Models\Payment;
+use App\Support\AuditLogger;
+use App\Support\SettlementMethod;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+/**
+ * Money received outside Paystack.
+ *
+ * Plenty of clients will pay a Nigerian company by direct bank transfer rather
+ * than a checkout page, and a notary may hand over the onboarding fee the same
+ * way. Before this the platform had no way to say so: the request sat unpaid
+ * with the money already in the account, and the only workaround was to edit a
+ * status field and lose every trace of what actually happened.
+ *
+ * A recorded payment is a claim by a named admin, not a webhook, so it carries
+ * who recorded it, how, when and against what reference — and then runs the
+ * ordinary settlement path so nothing downstream can tell the difference.
+ */
+class OfflinePaymentService
+{
+    public function __construct(private RequestFulfillmentService $fulfillment) {}
+
+    /**
+     * Record a request fee that arrived outside Paystack.
+     *
+     * $details: method, reference (their transfer ref), note, received_at, amount.
+     */
+    public function recordRequestFee(NotarizationRequest $request, array $details, ?int $actorId = null): Payment
+    {
+        return DB::transaction(function () use ($request, $details, $actorId) {
+            // Already settled — hand back the payment that exists and change
+            // nothing. Recording a fee twice is never what anyone meant, and a
+            // second successful row would double what the notary is owed and
+            // what the ledger says the client paid. If money really did arrive
+            // twice, that is a refund conversation, not another payment.
+            if ($paid = $this->settledFee($request)) {
+                return $paid;
+            }
+
+            // Reuse the row the client abandoned at checkout if there is one:
+            // two payment rows for one fee would double what the notary is owed.
+            $payment = $request->payments()
+                ->where('type', 'request_fee')
+                ->whereIn('status', ['pending', 'failed'])
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+
+            $amount = (int) ($details['amount'] ?? $request->service?->priceFor($request->currency) ?? 0);
+
+            $attributes = $this->settlementAttributes($details, $actorId) + [
+                'amount'   => $amount,
+                'currency' => $request->currency,
+            ];
+
+            if ($payment) {
+                $payment->update($attributes);
+            } else {
+                $payment = Payment::create($attributes + [
+                    'request_id'         => $request->id,
+                    'user_id'            => $request->client_id,
+                    'type'               => 'request_fee',
+                    'status'             => 'pending',
+                    'paystack_reference' => $this->reference(),
+                ]);
+            }
+
+            $this->audit($payment, 'payment.recorded_offline', $actorId, [
+                'request_id' => $request->id,
+            ]);
+
+            // Same path as the webhook: notifies the notary, starts the clock.
+            $this->fulfillment->settle($payment);
+
+            return $payment->fresh();
+        });
+    }
+
+    /**
+     * The request fee that has already cleared for this job, if any.
+     *
+     * Both the guard above and the admin form ask this same question — the form
+     * so it can refuse with an explanation instead of a false success, the guard
+     * so two admins with the modal open at once cannot get past it.
+     */
+    public function settledFee(NotarizationRequest $request): ?Payment
+    {
+        return $request->payments()
+            ->where('type', 'request_fee')
+            ->where('status', 'successful')
+            ->latest('id')
+            ->first();
+    }
+
+    /** Record an onboarding fee that arrived outside Paystack. */
+    public function recordOnboardingFee(Payment $payment, array $details, ?int $actorId = null): Payment
+    {
+        return DB::transaction(function () use ($payment, $details, $actorId) {
+            $payment->update($this->settlementAttributes($details, $actorId));
+
+            $this->audit($payment, 'payment.recorded_offline', $actorId);
+
+            OnboardingFeeController::settle($payment);
+
+            return $payment->fresh();
+        });
+    }
+
+    /** Settle a payment row that already exists and is still waiting. */
+    public function recordExisting(Payment $payment, array $details, ?int $actorId = null): Payment
+    {
+        // A payment that already cleared is left exactly as it is. Otherwise a
+        // stale form — or a second admin on the same row — would restamp a
+        // Paystack payment as having been handled by hand.
+        if ($payment->status === 'successful') {
+            return $payment;
+        }
+
+        return $payment->type === 'onboarding_fee'
+            ? $this->recordOnboardingFee($payment, $details, $actorId)
+            : DB::transaction(function () use ($payment, $details, $actorId) {
+                $payment->update($this->settlementAttributes($details, $actorId));
+
+                $this->audit($payment, 'payment.recorded_offline', $actorId);
+
+                $this->fulfillment->settle($payment);
+
+                return $payment->fresh();
+            });
+    }
+
+    /**
+     * Undo a mistaken record.
+     *
+     * Only ever available on a payment the platform recorded itself — a Paystack
+     * payment is Paystack's fact and cannot be talked out of by an admin. The
+     * request is NOT rewound: the notary has already been told and may have done
+     * the work, and quietly pulling a job out from under them is worse than an
+     * admin having to speak to someone.
+     */
+    public function reverse(Payment $payment, string $reason, ?int $actorId = null): bool
+    {
+        if ($payment->settlement_method === null) {
+            return false;
+        }
+
+        // Once a fee is inside a payout it is no longer just a payment — it is
+        // part of a figure the notary has been paid, or is about to be. Marking
+        // it failed here would leave the payout claiming a fee that no longer
+        // counts, and nothing would ever reconcile the difference. Cancel or
+        // regenerate the payout first; then the fee is loose and can be undone.
+        if ($payment->payout_id !== null) {
+            return false;
+        }
+
+        $payment->update([
+            'status'          => 'failed',
+            'settlement_note' => trim($payment->settlement_note . "\n\nReversed: " . $reason),
+        ]);
+
+        $this->audit($payment, 'payment.offline_reversed', $actorId, ['reason' => $reason]);
+
+        return true;
+    }
+
+    /** @return array<string, mixed> */
+    private function settlementAttributes(array $details, ?int $actorId): array
+    {
+        $method = (string) ($details['method'] ?? 'bank_transfer');
+
+        return [
+            'settlement_method'    => SettlementMethod::exists($method) ? $method : 'other',
+            'settlement_reference' => $details['reference'] ?? null,
+            'settlement_note'      => $details['note'] ?? null,
+            'recorded_by'          => $actorId,
+            // The date the money actually arrived, which is often not today —
+            // and it is what the payout period is built from, so it matters.
+            'completed_at'         => $details['received_at'] ?? now(),
+        ];
+    }
+
+    private function audit(Payment $payment, string $action, ?int $actorId, array $extra = []): void
+    {
+        AuditLogger::record($action, 'payment', $payment->id, $extra + [
+            'method'    => $payment->settlement_method,
+            'amount'    => $payment->amount,
+            'currency'  => $payment->currency,
+            'their_ref' => $payment->settlement_reference,
+        ], $actorId);
+    }
+
+    /**
+     * A lookup key for a payment that never went near Paystack.
+     *
+     * It lives in paystack_reference because that column is what every existing
+     * lookup uses; the OFF- prefix keeps it obvious that no Paystack transaction
+     * will ever be found behind it.
+     */
+    private function reference(): string
+    {
+        return 'OFF-' . Str::upper(Str::random(12));
+    }
+}
