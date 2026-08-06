@@ -38,6 +38,7 @@ class PlatformSettingsPage extends Page implements HasForms
             // FileUpload wants the stored path, not a URL.
             'site_logo'               => \App\Support\Branding::path('site_logo'),
             'site_icon'               => \App\Support\Branding::path('site_icon'),
+            'email_rate_per_minute'   => \App\Support\Settings::int('email_rate_per_minute', 30),
             'tawk_property_id'        => \App\Support\Settings::string('tawk_property_id', (string) config('nvn.tawk.property_id', '')),
             'tawk_widget_id'          => \App\Support\Settings::string('tawk_widget_id', (string) config('nvn.tawk.widget_id', 'default')),
             'system_services'         => $systemProfile
@@ -145,6 +146,23 @@ class PlatformSettingsPage extends Page implements HasForms
                             ->getUploadedFileNameForStorageUsing(
                                 fn ($file) => 'icon.' . $file->getClientOriginalExtension()),
                     ])->columns(2),
+
+                // ── Bulk email pacing ────────────────────────────────────
+                Forms\Components\Section::make('Sending email')
+                    ->description('How quickly announcements composed under Email are released to the mail '
+                        . 'server. Nothing is lost by going slowly — the send simply takes longer.')
+                    ->schema([
+                        Forms\Components\TextInput::make('email_rate_per_minute')
+                            ->label('Emails per minute')
+                            ->helperText('Shared cPanel hosts commonly cap outgoing mail at a few hundred an '
+                                . 'hour and start rejecting once you pass it. 30 a minute is a safe default. '
+                                . 'Set 0 to send as fast as the queue worker can, which is right for a '
+                                . 'dedicated sending service and wrong for shared hosting.')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(600)
+                            ->required(),
+                    ]),
 
                 // ── Live chat ────────────────────────────────────────────
                 Forms\Components\Section::make('Live chat (Tawk.to)')
@@ -266,6 +284,7 @@ class PlatformSettingsPage extends Page implements HasForms
         PlatformSetting::set('default_commission_rate', (int) $data['default_commission_rate'],                  'integer');
         PlatformSetting::set('fallback_minutes',        (int) $data['fallback_minutes'],                         'integer');
         PlatformSetting::set('paystack_transfers',      (bool) ($data['paystack_transfers'] ?? false) ? 1 : 0,   'boolean');
+        PlatformSetting::set('email_rate_per_minute',   max(0, (int) ($data['email_rate_per_minute'] ?? 30)),    'integer');
 
         // FileUpload hands back an array (or null once cleared); only the path
         // is stored, and clearing the field stores '' so the site falls back to

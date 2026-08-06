@@ -22,7 +22,7 @@ class User extends Authenticatable implements FilamentUser, HasName
         'mfa_enabled', 'last_login_at',
     ];
 
-    protected $hidden = ['password', 'remember_token', 'otp_code'];
+    protected $hidden = ['password', 'legacy_password', 'remember_token', 'otp_code'];
 
     protected function casts(): array
     {
@@ -32,6 +32,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'otp_expires_at'    => 'datetime',
             'last_login_at'     => 'datetime',
             'mfa_enabled'       => 'boolean',
+            'bulk_email_opt_out' => 'boolean',
             'password'          => 'hashed',
         ];
     }

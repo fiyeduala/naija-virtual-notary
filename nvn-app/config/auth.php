@@ -61,7 +61,12 @@ return [
 
     'providers' => [
         'users' => [
-            'driver' => 'eloquent',
+            // The stock Eloquent provider plus a WordPress-hash fallback, so
+            // accounts imported from the old site sign in with the password
+            // they already know and are upgraded on the way through. Behaves
+            // exactly like 'eloquent' for everyone else — see
+            // App\Auth\LegacyUserProvider.
+            'driver' => 'legacy-eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
         ],
 

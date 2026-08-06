@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Auth\LegacyUserProvider;
 use App\Services\Video\AgoraVideoProvider;
 use App\Services\Video\DailyVideoProvider;
 use App\Services\Video\ManualVideoProvider;
 use App\Services\Video\VideoProvider;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -25,6 +27,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        // Accounts brought over from the old WordPress site sign in with the
+        // password they already had; see LegacyUserProvider. Selected by
+        // config/auth.php → providers.users.driver.
+        Auth::provider('legacy-eloquent', fn ($app, array $config) => new LegacyUserProvider(
+            $app['hash'],
+            $config['model'],
+        ));
     }
 }
