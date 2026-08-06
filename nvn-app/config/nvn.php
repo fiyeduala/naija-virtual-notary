@@ -52,6 +52,18 @@ return [
     'paystack_transfers' => env('NVN_PAYSTACK_TRANSFERS', false),
 
     /*
+    | How long the scheduled queue worker runs before exiting, in seconds.
+    |
+    | It should be just under the interval of the server cron that calls
+    | `schedule:run`, so a worker is alive for as much of each window as
+    | possible. 55 suits the per-minute cron in routes/console.php. Some shared
+    | hosts refuse anything more frequent than every five minutes — set
+    | NVN_QUEUE_MAX_TIME=290 there, or queued email sits idle for four minutes
+    | out of every five.
+    */
+    'queue_max_time' => (int) env('NVN_QUEUE_MAX_TIME', 55),
+
+    /*
     | Tawk.to live chat.
     |
     | Paste the two IDs from the widget's embed code — Tawk gives you a src of
