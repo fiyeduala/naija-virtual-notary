@@ -86,7 +86,9 @@ return [
     |
     */
 
-    'table' => env('SESSION_TABLE', 'sessions'),
+    // NOT 'sessions'. This application already has a `sessions` table and it
+    // holds video verification sessions for notarizations, not HTTP sessions.
+    'table' => env('SESSION_TABLE', 'http_sessions'),
 
     /*
     |--------------------------------------------------------------------------
