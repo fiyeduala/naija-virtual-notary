@@ -53,7 +53,13 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            // Explicit, not the server default. Some shared hosts still default
+            // new tables to MyISAM, which has no transactions — the payout
+            // ledger and the double-payment and double-send guards are all
+            // DB::transaction(). It also caps an index at 1000 bytes, so the
+            // utf8mb4 varchar(255) primary key on Laravel's cache table cannot
+            // be created at all.
+            'engine' => env('DB_ENGINE', 'InnoDB'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -73,7 +79,13 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
-            'engine' => null,
+            // Explicit, not the server default. Some shared hosts still default
+            // new tables to MyISAM, which has no transactions — the payout
+            // ledger and the double-payment and double-send guards are all
+            // DB::transaction(). It also caps an index at 1000 bytes, so the
+            // utf8mb4 varchar(255) primary key on Laravel's cache table cannot
+            // be created at all.
+            'engine' => env('DB_ENGINE', 'InnoDB'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
