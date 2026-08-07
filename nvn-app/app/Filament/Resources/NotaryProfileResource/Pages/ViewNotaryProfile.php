@@ -19,6 +19,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class ViewNotaryProfile extends ViewRecord
 {
@@ -30,6 +31,7 @@ class ViewNotaryProfile extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            $this->editDetailsAction(),
             $this->manageAssetsAction(),
             $this->payoutAccountAction(),
 
@@ -112,6 +114,117 @@ class ViewNotaryProfile extends ViewRecord
                     Notification::make()->title('Service pricing updated')->success()->send();
                 }),
         ];
+    }
+
+    /**
+     * The notary's own details — the ones a client sees.
+     *
+     * Everything else on this page edits something the notary set up. This
+     * edits who they are, and the reason it exists is the WordPress import:
+     * WordPress falls back to the username when the name fields are empty, so
+     * several imported notaries arrived called things like "pebiala". That
+     * string appears in the marketplace listing and on the notarial
+     * certificate, which makes it the one field here that has to be right
+     * before anybody is approved.
+     *
+     * Email is editable but deliberately awkward — it is the login identity,
+     * and changing it changes what the person types to get in.
+     */
+    private function editDetailsAction(): Actions\Action
+    {
+        return Actions\Action::make('edit_details')
+            ->label('Edit details')
+            ->icon('heroicon-o-pencil-square')
+            ->color('gray')
+            ->modalHeading('Notary details')
+            ->modalWidth('2xl')
+            ->fillForm(fn ($record) => [
+                'full_name'         => $record->user?->full_name,
+                'email'             => $record->user?->email,
+                'phone'             => $record->user?->phone,
+                'entity_type'       => $record->entity_type,
+                'organization_name' => $record->organization_name,
+                'license_ref'       => $record->license_ref,
+                'scn'               => $record->scn,
+                'year_of_oath'      => $record->year_of_oath,
+            ])
+            ->form([
+                Forms\Components\TextInput::make('full_name')
+                    ->label('Full name')
+                    ->required()
+                    ->maxLength(250)
+                    ->helperText('As it should appear in the marketplace and on a notarial certificate.')
+                    ->columnSpanFull(),
+
+                Forms\Components\TextInput::make('email')
+                    ->label('Email')
+                    ->email()
+                    ->required()
+                    ->maxLength(250)
+                    ->helperText('This is what they sign in with. Changing it changes their login.')
+                    ->rule(fn ($record) => Rule::unique('users', 'email')->ignore($record->user_id)),
+
+                Forms\Components\TextInput::make('phone')
+                    ->label('Phone')
+                    ->tel()
+                    ->maxLength(50),
+
+                Forms\Components\Select::make('entity_type')
+                    ->label('Entity type')
+                    ->options(['individual' => 'Individual', 'agency' => 'Agency / firm'])
+                    ->required(),
+
+                Forms\Components\TextInput::make('organization_name')
+                    ->label('Organization')
+                    ->maxLength(250),
+
+                Forms\Components\TextInput::make('license_ref')
+                    ->label('License ref')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('scn')
+                    ->label('SCN')
+                    ->maxLength(100),
+
+                Forms\Components\TextInput::make('year_of_oath')
+                    ->label('Year of oath')
+                    ->numeric()
+                    ->minValue(1900)
+                    ->maxValue((int) date('Y')),
+            ])
+            ->columns(2)
+            ->action(function (array $data, $record) {
+                $user = $record->user;
+
+                $before = [
+                    'full_name' => $user?->full_name,
+                    'email'     => $user?->email,
+                ];
+
+                $user?->update([
+                    'full_name' => $data['full_name'],
+                    'email'     => $data['email'],
+                    'phone'     => $data['phone'] ?: null,
+                ]);
+
+                $record->update([
+                    'entity_type'       => $data['entity_type'],
+                    'organization_name' => $data['organization_name'] ?: null,
+                    'license_ref'       => $data['license_ref'] ?: null,
+                    'scn'               => $data['scn'] ?: null,
+                    'year_of_oath'      => $data['year_of_oath'] ?: null,
+                ]);
+
+                AuditLogger::record('notary.details_updated', 'notary_profile', $record->id, [
+                    'before'     => $before,
+                    'after'      => ['full_name' => $data['full_name'], 'email' => $data['email']],
+                    'updated_by' => auth()->id(),
+                ]);
+
+                $this->record->refresh()->load('user');
+
+                Notification::make()->title('Details updated')->success()->send();
+            });
     }
 
     /**

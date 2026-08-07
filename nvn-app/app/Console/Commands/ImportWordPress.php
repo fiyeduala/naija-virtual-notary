@@ -221,7 +221,7 @@ class ImportWordPress extends Command
             $user = $existing ?? new User();
             $name = $this->displayName($row, $m);
 
-            $user->fill([
+            $attributes = [
                 'full_name' => $name,
                 'email'     => $email,
                 'phone'     => $m['billing_phone'] ?? $m['phone'] ?? $user->phone,
@@ -232,7 +232,29 @@ class ImportWordPress extends Command
                 // platform they did not ask to be moved to, would read as a
                 // broken migration rather than a security measure.
                 'email_verified_at' => $existing?->email_verified_at ?? $row->user_registered,
-            ]);
+            ];
+
+            // On an account that is already here, only fill the blanks.
+            //
+            // WordPress is frozen and about to be switched off, so it is no
+            // longer the better source for anything a human has since touched.
+            // Several imported notaries have a username where their name should
+            // be, because WordPress falls back to user_login when the name
+            // fields are empty — and that string goes on a notarial
+            // certificate. Correcting it in the panel and then re-running the
+            // import must not quietly undo the correction. Same for a suspended
+            // account, or a role changed on purpose.
+            if ($user->exists) {
+                $attributes = array_filter(
+                    $attributes,
+                    fn ($key) => blank($user->getAttribute($key)),
+                    ARRAY_FILTER_USE_KEY
+                );
+
+                $this->bump('users.fields_left_alone', 6 - count($attributes));
+            }
+
+            $user->fill($attributes);
 
             if (! $user->exists) {
                 // Cast 'hashed' turns this into a bcrypt hash of a string
