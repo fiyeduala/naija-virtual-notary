@@ -352,6 +352,8 @@ class ImportWordPress extends Command
         $this->bump('notaries.applications_on_file', $applications->count());
         $this->bump('notaries.confirmations_on_file', $confirmations->count());
 
+        $claimed = [];
+
         foreach ($notaries as $user) {
             $profile = NotaryProfile::firstOrNew(['user_id' => $user->id]);
 
@@ -388,6 +390,7 @@ class ImportWordPress extends Command
             if ($confirmation = $confirmations->get($key)) {
                 $this->applyConfirmation($profile, $confirmation);
                 $this->bump('notaries.matched_confirmation');
+                $claimed[] = $key;
             } else {
                 $this->bump('notaries.no_confirmation');
             }
@@ -395,6 +398,26 @@ class ImportWordPress extends Command
             // The question that decides whether this person can work on day one.
             $profile->load('assets');
             $this->bump($profile->canSeal() ? 'notaries.can_seal' : 'notaries.cannot_seal');
+        }
+
+        // A confirmation nobody claimed is the expensive kind of miss. It means
+        // somebody completed the partner form — stamp, signature, bank details,
+        // the assets a notary cannot work without — using an address that is not
+        // the one on their account. The submission is not lost, but nothing will
+        // find it on its own, so name it here rather than leave it in a count.
+        $orphans = $confirmations->keys()->diff($claimed);
+
+        if ($orphans->isNotEmpty()) {
+            $this->newLine();
+            $this->warn("{$orphans->count()} partner confirmation(s) matched no notary account:");
+
+            foreach ($orphans as $email) {
+                $this->line("  · {$email}");
+            }
+
+            $this->line('  Either that person has no WordPress notary account, or they');
+            $this->line('  filled the form in with a different address. Fix the address on');
+            $this->line('  one side and re-run — the import is safe to run twice.');
         }
 
         $this->newLine();
@@ -596,7 +619,18 @@ class ImportWordPress extends Command
 
             $this->importDocument($request, $client, $f, 'upload-documentcfdb7_file', 'document');
             $this->importDocument($request, $client, $f, 'upload-idcfdb7_file', 'identification');
-            $this->importDocument($request, $client, $f, 'additional-documents', 'additional');
+
+            // Any other upload on the form, whatever it was called. CFDB7 marks
+            // a file field by appending 'cfdb7_file' to its name, and that
+            // suffix is the only reliable way to tell an upload from a text box
+            // — 'additional-documents' has no suffix and holds a description
+            // the client typed, which was being read as a list of filenames.
+            foreach (array_keys($f) as $field) {
+                if (str_ends_with($field, 'cfdb7_file')
+                    && ! in_array($field, ['upload-documentcfdb7_file', 'upload-idcfdb7_file'], true)) {
+                    $this->importDocument($request, $client, $f, $field, 'additional');
+                }
+            }
         }
 
         $bar->finish();
