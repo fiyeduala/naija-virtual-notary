@@ -18,7 +18,7 @@ class EditPost extends EditRecord
                 ->label('View on site')
                 ->icon('heroicon-o-arrow-top-right-on-square')
                 ->url(fn () => route('blog.show', $this->record))
-                ->openUrlInTab()
+                ->openUrlInNewTab()
                 ->visible(fn () => $this->record->isPublished()),
             Actions\DeleteAction::make(),
         ];

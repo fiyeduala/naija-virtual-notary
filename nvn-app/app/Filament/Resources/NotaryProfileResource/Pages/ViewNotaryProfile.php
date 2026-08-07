@@ -153,9 +153,13 @@ class ViewNotaryProfile extends ViewRecord
                     ->label('Full name')
                     ->required()
                     ->maxLength(250)
-                    ->helperText('As it should appear in the marketplace and on a notarial certificate.')
-                    ->columnSpanFull(),
+                    ->helperText('As it should appear in the marketplace and on a notarial certificate.'),
 
+                // Grid, not ->columns(2) on the action: Filament\Actions\Action
+                // has no columns() method, and the failure is a 500 the first
+                // time somebody opens the modal rather than anything visible
+                // when the file is written.
+                Forms\Components\Grid::make(2)->schema([
                 Forms\Components\TextInput::make('email')
                     ->label('Email')
                     ->email()
@@ -191,8 +195,8 @@ class ViewNotaryProfile extends ViewRecord
                     ->numeric()
                     ->minValue(1900)
                     ->maxValue((int) date('Y')),
+                ]),
             ])
-            ->columns(2)
             ->action(function (array $data, $record) {
                 $user = $record->user;
 

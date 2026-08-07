@@ -153,7 +153,7 @@ class PostResource extends Resource
                     ->label('View')
                     ->icon('heroicon-o-arrow-top-right-on-square')
                     ->url(fn (Post $p) => route('blog.show', $p))
-                    ->openUrlInTab()
+                    ->openUrlInNewTab()
                     ->visible(fn (Post $p) => $p->isPublished()),
 
                 Tables\Actions\EditAction::make(),
