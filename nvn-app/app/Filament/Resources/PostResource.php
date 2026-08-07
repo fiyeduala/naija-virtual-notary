@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\PostResource\Pages;
 use App\Models\Post;
+use App\Models\User;
 use App\Support\AuditLogger;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -102,12 +103,20 @@ class PostResource extends Resource
                         ->maxLength(300)
                         ->helperText('What search engines show under the title. Blank falls back to the excerpt.'),
 
+                    // options(), not relationship(). Filament's relationship
+                    // machinery resolves the relation at render time and hands
+                    // whatever it finds — including null — to a query builder,
+                    // so a relation it cannot see becomes "qualifyColumn() on
+                    // null" on the create page rather than anything checkable
+                    // earlier. The set of admins is small and fixed; asking for
+                    // it directly is both simpler and unable to fail that way.
                     Forms\Components\Select::make('author_id')
                         ->label('Author')
-                        ->relationship('author', 'full_name', fn (Builder $q) => $q->where('role', 'admin'))
+                        ->options(fn () => User::where('role', 'admin')
+                            ->orderBy('full_name')
+                            ->pluck('full_name', 'id'))
                         ->default(fn () => auth()->id())
-                        ->searchable()
-                        ->preload(),
+                        ->searchable(),
                 ])
                 ->columns(2),
         ]);
