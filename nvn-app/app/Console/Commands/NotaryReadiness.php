@@ -111,7 +111,11 @@ class NotaryReadiness extends Command
 
         $missing = array_merge($missing, $this->sealingGaps($profile));
 
-        $credentials = $profile->credentials->pluck('type')->all();
+        // document_type, not type. Assets use `type` and credentials use
+        // `document_type`, and plucking the wrong one returns a column of
+        // nulls rather than an error — so this reported every notary as
+        // missing both credentials while the importer said it had filed four.
+        $credentials = $profile->credentials->pluck('document_type')->all();
 
         foreach (['valid_id', 'notary_certificate'] as $type) {
             if (! in_array($type, $credentials, true)) {
