@@ -1,8 +1,10 @@
 <?php
 
+use App\Support\CloudflareProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 /*
 | Naija Virtual Notary — application bootstrap.
@@ -19,6 +21,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // The live subdomain sits behind Cloudflare, so the address on the
+        // socket is an edge node and the visitor's own address is in
+        // X-Forwarded-For. Trust that header from Cloudflare and nowhere else
+        // — see App\Support\CloudflareProxies for why the list is not '*'.
+        $middleware->trustProxies(
+            at: CloudflareProxies::ranges(),
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         // Custom middleware aliases
         $middleware->alias([
             'role'         => \App\Http\Middleware\EnsureUserHasRole::class,
