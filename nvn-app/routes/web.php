@@ -16,6 +16,13 @@ Route::get('/about', fn () => view('public.about'))->name('about');
 Route::get('/how-it-works', fn () => view('public.how-it-works'))->name('how-it-works');
 // /partner-with-us GET+POST are handled in routes/notary.php (NotaryApplicationController)
 
+// Blog. The show route resolves by slug and 404s on a draft for everyone
+// except a signed-in admin, so an article can be read in place before it goes
+// out. Note /blog-media is a real directory served by the web server — that is
+// where cover images live, and why it is not called /blog/anything.
+Route::get('/blog', [\App\Http\Controllers\BlogController::class, 'index'])->name('blog.index');
+Route::get('/blog/{post}', [\App\Http\Controllers\BlogController::class, 'show'])->name('blog.show');
+
 // Email preferences — the unsubscribe link at the foot of an announcement.
 // Signed rather than authenticated: making someone log in to stop receiving
 // email is how you get reported as spam instead.

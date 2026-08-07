@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\NotarizationRequest;
 use App\Models\NotaryProfile;
+use App\Models\Post;
 use App\Models\User;
 use App\Support\WordPressHasher;
 use Illuminate\Console\Command;
@@ -45,7 +46,7 @@ class ImportWordPress extends Command
 {
     protected $signature = 'nvn:import-wordpress
         {--dry-run : Do the whole import inside a transaction, report it, then roll back}
-        {--only= : Comma-separated stages to run: users, notaries, requests}
+        {--only= : Comma-separated stages to run: users, notaries, requests, posts}
         {--stamp-as-seal : Register each notary stamp as their seal as well (see the note this prints)}
         {--author=client : Role for WordPress "author" accounts: client, notary or admin}';
 
@@ -69,7 +70,7 @@ class ImportWordPress extends Command
 
         $stages = $this->option('only')
             ? array_map('trim', explode(',', $this->option('only')))
-            : ['users', 'notaries', 'requests'];
+            : ['users', 'notaries', 'requests', 'posts'];
 
         $this->indexUploads();
 
@@ -86,6 +87,10 @@ class ImportWordPress extends Command
 
             if (in_array('requests', $stages, true)) {
                 $this->importRequests();
+            }
+
+            if (in_array('posts', $stages, true)) {
+                $this->importPosts();
             }
 
             if ($this->dry) {
@@ -646,6 +651,202 @@ class ImportWordPress extends Command
 
     /*
     |--------------------------------------------------------------------------
+    | Stage 4 — blog articles
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Every article becomes the admin's, whoever wrote it on the old site.
+     *
+     * The alternative is importing WordPress's author accounts as people who
+     * can write here, and a WordPress "author" is not an administrator — it is
+     * a role that existed to let one member of staff post updates. Carrying it
+     * over as panel access would hand a years-old password an admin login.
+     */
+    private function importPosts(): void
+    {
+        $this->line('Blog articles…');
+
+        $author = User::where('email', config('nvn.system_native_email'))->where('role', 'admin')->first()
+            ?? User::where('role', 'admin')->orderBy('id')->first();
+
+        if (! $author) {
+            $this->warn('  No admin account exists yet — run the seeder first. Skipping articles.');
+
+            return;
+        }
+
+        $rows = $this->wp()->table($this->t('posts'))
+            ->where('post_type', 'post')
+            ->whereIn('post_status', ['publish', 'draft', 'pending', 'private', 'future'])
+            ->orderBy('ID')
+            ->get();
+
+        $thumbnails = $this->thumbnailPaths($rows->pluck('ID')->all());
+        $bar        = $this->output->createProgressBar($rows->count());
+
+        foreach ($rows as $row) {
+            $bar->advance();
+
+            $post = Post::withTrashed()->firstOrNew([
+                'legacy_source' => 'wordpress',
+                'legacy_id'     => $row->ID,
+            ]);
+
+            $isNew = ! $post->exists;
+
+            // Only on the way in. If somebody has since edited the article here,
+            // re-running the import must not throw their work away.
+            if (! $isNew) {
+                $this->bump('posts.already_imported');
+                continue;
+            }
+
+            $title = $this->str($row->post_title, 250) ?? 'Untitled';
+            $html  = (string) $row->post_content;
+
+            $this->bump('posts.embeds_removed', preg_match_all('/<iframe\b/i', $html));
+
+            $post->fill([
+                'author_id'    => $author->id,
+                'title'        => $title,
+                'slug'         => Post::uniqueSlug($this->str($row->post_name) ?: $title),
+                'excerpt'      => $this->str($row->post_excerpt, 500),
+                'body'         => $this->rewriteInlineMedia($html),
+                'cover_image'  => $thumbnails[$row->ID] ?? null,
+                // Everything that was not live on WordPress arrives as a draft,
+                // including 'future' — a post scheduled for a date that has
+                // since passed should be looked at, not published unread.
+                'status'       => $row->post_status === 'publish' ? 'published' : 'draft',
+                'published_at' => $row->post_status === 'publish' ? $row->post_date : null,
+                'created_at'   => $row->post_date,
+            ]);
+
+            $post->save();
+
+            $this->bump('posts.created');
+            $this->bump('posts.' . ($row->post_status === 'publish' ? 'published' : 'draft'));
+        }
+
+        $bar->finish();
+        $this->newLine(2);
+    }
+
+    /**
+     * Featured images, as paths on the blog disk, keyed by post id.
+     *
+     * Two hops in WordPress: the post's _thumbnail_id points at an attachment,
+     * and the attachment's _wp_attached_file is its path under uploads/.
+     */
+    private function thumbnailPaths(array $postIds): array
+    {
+        if (! $postIds) {
+            return [];
+        }
+
+        $thumbnailIds = $this->wp()->table($this->t('postmeta'))
+            ->whereIn('post_id', $postIds)
+            ->where('meta_key', '_thumbnail_id')
+            ->pluck('meta_value', 'post_id');
+
+        if ($thumbnailIds->isEmpty()) {
+            return [];
+        }
+
+        $files = $this->wp()->table($this->t('postmeta'))
+            ->whereIn('post_id', $thumbnailIds->values()->all())
+            ->where('meta_key', '_wp_attached_file')
+            ->pluck('meta_value', 'post_id');
+
+        $out = [];
+
+        foreach ($thumbnailIds as $postId => $attachmentId) {
+            $relative = $files[$attachmentId] ?? null;
+
+            if ($relative && $stored = $this->storeMedia($relative)) {
+                $out[$postId] = $stored;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Copy the pictures inside an article across and repoint them at us.
+     *
+     * The old site's image URLs are absolute, on a domain that is about to stop
+     * serving WordPress — the cut-over is a document-root change, so those URLs
+     * keep resolving and start returning 404. Only images an article actually
+     * references are copied, which is a few megabytes rather than the 1.3 GB
+     * uploads directory.
+     */
+    private function rewriteInlineMedia(string $html): string
+    {
+        return preg_replace_callback(
+            '#(<img\b[^>]*?\bsrc\s*=\s*["\'])([^"\']*?/wp-content/uploads/)([^"\']+)(["\'])#i',
+            function (array $m) {
+                $stored = $this->storeMedia(rawurldecode($m[3]));
+
+                if ($stored === null) {
+                    $this->bump('posts.inline_image_missing');
+
+                    return $m[0];
+                }
+
+                $this->bump('posts.inline_image_rewritten');
+
+                return $m[1] . '/blog-media/' . $stored . $m[4];
+            },
+            $html
+        ) ?? $html;
+    }
+
+    /**
+     * Copy one file from wp-content/uploads onto the public blog disk.
+     *
+     * Returns its path on that disk, or null. The path under uploads/ is kept
+     * as-is (2024/05/whatever.jpg), because WordPress filenames already collide
+     * constantly and the year/month folders are what keeps them apart.
+     */
+    private function storeMedia(string $relative): ?string
+    {
+        $relative = ltrim(str_replace('\\', '/', $relative), '/');
+
+        // No traversal out of uploads/, whatever the database says.
+        if ($relative === '' || str_contains($relative, '..')) {
+            return null;
+        }
+
+        $base = config('nvn.wordpress.path');
+
+        if (! $base) {
+            return null;
+        }
+
+        $source = rtrim($base, '/\\') . '/wp-content/uploads/' . $relative;
+
+        if (! is_file($source) || ! is_readable($source)) {
+            return null;
+        }
+
+        $target = 'imported/' . $relative;
+
+        if ($this->dry) {
+            $this->bump('files.would_copy_media');
+
+            return $target;
+        }
+
+        if (! Storage::disk('blog')->exists($target)) {
+            Storage::disk('blog')->put($target, file_get_contents($source));
+            $this->bump('files.media_copied');
+        }
+
+        return $target;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | CFDB7
     |--------------------------------------------------------------------------
     */
@@ -858,6 +1059,17 @@ class ImportWordPress extends Command
             $this->line('  across. Either those notaries upload one, or, if their stamp IS their');
             $this->line('  seal, re-run with --stamp-as-seal. That is a notarial question, not a');
             $this->line('  technical one, which is why this does not decide it for you.');
+        }
+
+        if (($this->stats['posts.embeds_removed'] ?? 0) > 0) {
+            $this->newLine();
+            $this->warn(sprintf(
+                '%d embed(s) — YouTube, maps, and the like — were stripped from articles.',
+                $this->stats['posts.embeds_removed']
+            ));
+            $this->line('  An <iframe> renders whatever the other site decides to serve, on a page');
+            $this->line('  your visitors trust, so the sanitiser removes them. The surrounding text');
+            $this->line('  is intact; those articles need the video re-added by hand, or a link.');
         }
 
         if (($this->stats['files.missing'] ?? 0) > 0) {

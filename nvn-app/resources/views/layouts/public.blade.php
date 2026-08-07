@@ -132,6 +132,7 @@
             <a href="{{ route('home') }}">Home</a>
             <a href="{{ route('about') }}">About</a>
             <a href="{{ route('how-it-works') }}">How It Works</a>
+            <a href="{{ route('blog.index') }}">Blog</a>
             <a href="{{ route('partner') }}">Partner With Us</a>
             @auth
                 <a href="{{ route('dashboard') }}">Dashboard</a>
@@ -160,6 +161,7 @@
                 <a href="{{ route('home') }}">Home</a>
                 <a href="{{ route('about') }}">About Us</a>
                 <a href="{{ route('how-it-works') }}">How It Works</a>
+                <a href="{{ route('blog.index') }}">Blog</a>
                 <a href="{{ route('partner') }}">Partner With Us</a>
             </div>
             <div class="footer-col">

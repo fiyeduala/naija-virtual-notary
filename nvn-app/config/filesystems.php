@@ -52,6 +52,29 @@ return [
             'throw'      => false,
         ],
 
+        /*
+         * Blog cover images and the pictures inside articles.
+         *
+         * Public by design — a blog post nobody can see the images on is not a
+         * blog post — and rooted in public/ for the same reason as 'brand':
+         * these must survive a cPanel move, and the `storage` symlink is the
+         * thing that does not.
+         *
+         * Nothing sensitive belongs here. It is served straight off disk by the
+         * web server with no authorization check whatsoever.
+         *
+         * Rooted at public/blog-media and NOT public/blog: /blog/{slug} is a
+         * route, and a real directory of that name means the web server answers
+         * some of those URLs off disk before Laravel ever sees them.
+         */
+        'blog' => [
+            'driver'     => 'local',
+            'root'       => public_path('blog-media'),
+            'url'        => '/blog-media',
+            'visibility' => 'public',
+            'throw'      => false,
+        ],
+
     ],
 
     'links' => [
