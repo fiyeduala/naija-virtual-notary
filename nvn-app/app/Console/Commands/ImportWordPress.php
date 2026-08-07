@@ -48,7 +48,8 @@ class ImportWordPress extends Command
         {--dry-run : Do the whole import inside a transaction, report it, then roll back}
         {--only= : Comma-separated stages to run: users, notaries, requests, posts}
         {--stamp-as-seal : Register each notary stamp as their seal as well (see the note this prints)}
-        {--author=client : Role for WordPress "author" accounts: client, notary or admin}';
+        {--author=client : Role for WordPress "author" accounts: client, notary or admin}
+        {--map=* : form-address=account-address, for a form filled in under a different email. Repeatable.}';
 
     protected $description = 'Import users, notary profiles and request history from the old WordPress site';
 
@@ -59,6 +60,9 @@ class ImportWordPress extends Command
 
     /** Counters, printed as the summary. Everything interesting is a number here. */
     private array $stats = [];
+
+    /** Which --map arguments actually matched something. */
+    private array $mapsUsed = [];
 
     public function handle(): int
     {
@@ -120,6 +124,14 @@ class ImportWordPress extends Command
 
     private function preflight(): bool
     {
+        foreach ((array) $this->option('map') as $pair) {
+            if (! str_contains((string) $pair, '=')) {
+                $this->error("--map needs form-address=account-address, got: {$pair}");
+
+                return false;
+            }
+        }
+
         if (! config('database.connections.wordpress.database')) {
             $this->error('WP_DB_DATABASE is not set. Add the old database credentials to .env:');
             $this->line('  WP_DB_DATABASE=  WP_DB_USERNAME=  WP_DB_PASSWORD=  WP_TABLE_PREFIX=  WP_PATH=');
@@ -918,8 +930,35 @@ class ImportWordPress extends Command
     {
         return $this->submissions($formId)
             ->filter(fn ($row) => filled($this->str($row->fields[$emailField] ?? null)))
-            ->keyBy(fn ($row) => strtolower((string) $this->str($row->fields[$emailField])))
+            ->keyBy(fn ($row) => $this->mapEmail($this->str($row->fields[$emailField])))
             ->map(fn ($row) => $row->fields);
+    }
+
+    /**
+     * Redirect a form address to the account it belongs to.
+     *
+     * These forms join to accounts on a typed email and nothing else, so a
+     * notary who applied from a chambers or Bar address and registered from a
+     * personal one leaves a complete set of sealing assets attached to nobody.
+     * The correction is recorded here, as an argument, rather than by editing
+     * the WordPress row or temporarily changing somebody's login address —
+     * both of which work once and leave no trace of why.
+     */
+    private function mapEmail(?string $email): string
+    {
+        $email = strtolower(trim((string) $email));
+
+        foreach ((array) $this->option('map') as $pair) {
+            [$from, $to] = array_pad(explode('=', (string) $pair, 2), 2, null);
+
+            if ($to !== null && strtolower(trim($from)) === $email) {
+                $this->mapsUsed[strtolower(trim($from))] = true;
+
+                return strtolower(trim($to));
+            }
+        }
+
+        return $email;
     }
 
     /*
@@ -1085,6 +1124,17 @@ class ImportWordPress extends Command
             ['', 'count'],
             array_map(fn ($k, $v) => [$k, number_format($v)], array_keys($this->stats), $this->stats)
         );
+
+        // A --map that matched nothing is almost always a typo, and its symptom
+        // is the thing it was meant to fix staying broken. Say so.
+        foreach ((array) $this->option('map') as $pair) {
+            $from = strtolower(trim(explode('=', (string) $pair, 2)[0]));
+
+            if (! isset($this->mapsUsed[$from])) {
+                $this->newLine();
+                $this->warn("--map {$from} matched no submission. Check the spelling.");
+            }
+        }
 
         if (($this->stats['notaries.cannot_seal'] ?? 0) > 0 && ! $this->option('stamp-as-seal')) {
             $this->newLine();
