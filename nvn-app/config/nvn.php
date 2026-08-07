@@ -108,6 +108,32 @@ return [
     'system_native_email' => env('NVN_SYSTEM_NATIVE_EMAIL', 'admin@naijavirtualnotary.com'),
 
     /*
+    | The old WordPress site — read once, by `nvn:import-wordpress`.
+    |
+    | 'path' is the WordPress document root on disk, needed because CFDB7 keeps
+    | uploaded files on the filesystem and only the filename in the database.
+    | Without it the accounts import fine and every attachment is skipped.
+    |
+    | The three form ids are this install's, discovered from wp_posts where
+    | post_type = 'wpcf7_contact_form'. They are configuration rather than
+    | constants because a rebuilt form gets a new id, and the whole import then
+    | silently matches nothing rather than failing loudly.
+    */
+    'wordpress' => [
+        'prefix' => env('WP_TABLE_PREFIX', 'wp_'),
+        'path'   => env('WP_PATH'),
+
+        'forms' => [
+            // "Request Notarization" — client intake.
+            'request'   => (int) env('WP_FORM_REQUEST', 656),
+            // "Application Form" — notary partner application.
+            'application' => (int) env('WP_FORM_APPLICATION', 560),
+            // "Partner confirmation" — signature, stamp, logo and bank details.
+            'confirmation' => (int) env('WP_FORM_CONFIRMATION', 690),
+        ],
+    ],
+
+    /*
     | VAPID keys for Web Push notifications.
     | Generate once with: php artisan nvn:vapid-keys
     | Then add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to .env

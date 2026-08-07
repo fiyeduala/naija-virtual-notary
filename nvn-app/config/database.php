@@ -39,6 +39,41 @@ return [
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
         ],
 
+        /*
+        | The old WordPress database, read during `nvn:import-wordpress`.
+        |
+        | Only that command ever touches this connection, and it only ever
+        | SELECTs. Point WP_DB_USERNAME at a MySQL user with SELECT and nothing
+        | else if you can — then "only ever SELECTs" is enforced by the server
+        | rather than by the code being careful.
+        |
+        | Leave WP_DB_DATABASE unset and the connection simply never opens; the
+        | import command checks for it and stops with an explanation.
+        */
+        'wordpress' => [
+            'driver' => 'mysql',
+            'host' => env('WP_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('WP_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('WP_DB_DATABASE'),
+            'username' => env('WP_DB_USERNAME'),
+            'password' => env('WP_DB_PASSWORD', ''),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            // Not the app's collation. WordPress tables are routinely
+            // utf8mb4_unicode_ci, and a mismatched collation on a JOIN against
+            // an email address raises "Illegal mix of collations" mid-import.
+            'collation' => env('WP_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            // The table prefix is NOT set here. Laravel would then strip it from
+            // result sets and the raw table names in the import queries would
+            // stop matching. The command interpolates config('nvn.wordpress.prefix')
+            // itself.
+            'prefix' => '',
+            'strict' => false,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
