@@ -402,7 +402,10 @@ class ImportWordPress extends Command
 
     private function applyApplication(NotaryProfile $profile, array $f): void
     {
-        $type = strtolower((string) ($f['applicant-type'] ?? ''));
+        // Through str(), not a direct cast: CFDB7 stores a radio, checkbox or
+        // select as an array even when only one option can be chosen, so half
+        // these fields arrive as ['Individual'] rather than 'Individual'.
+        $type = strtolower((string) $this->str($f['applicant-type'] ?? null));
 
         $profile->fill(array_filter([
             'entity_type' => Str::contains($type, ['agency', 'organis', 'organiz', 'firm', 'compan'])
@@ -547,7 +550,7 @@ class ImportWordPress extends Command
             $bar->advance();
 
             $f     = $row->fields;
-            $email = strtolower(trim((string) ($f['email'] ?? '')));
+            $email = strtolower((string) $this->str($f['email'] ?? null));
 
             $client = $email ? User::where('email', $email)->first() : null;
 
@@ -880,8 +883,8 @@ class ImportWordPress extends Command
     private function submissionsByEmail(int $formId, string $emailField): \Illuminate\Support\Collection
     {
         return $this->submissions($formId)
-            ->filter(fn ($row) => filled($row->fields[$emailField] ?? null))
-            ->keyBy(fn ($row) => strtolower(trim((string) $row->fields[$emailField])))
+            ->filter(fn ($row) => filled($this->str($row->fields[$emailField] ?? null)))
+            ->keyBy(fn ($row) => strtolower((string) $this->str($row->fields[$emailField])))
             ->map(fn ($row) => $row->fields);
     }
 
@@ -942,9 +945,12 @@ class ImportWordPress extends Command
 
         $list = is_array($value) ? $value : preg_split('/\s*[,\n]\s*/', (string) $value);
 
+        // Scalars only. A multi-file field can nest one level deeper, and a
+        // stray array here would abort the run with "Array to string
+        // conversion" — over one attachment, out of hundreds.
         return array_values(array_filter(array_map(
             fn ($v) => trim(basename(str_replace('\\', '/', (string) $v))),
-            $list
+            array_filter($list, 'is_scalar')
         )));
     }
 
@@ -1026,11 +1032,9 @@ class ImportWordPress extends Command
 
     private function truthy(mixed $value): bool
     {
-        if (is_array($value)) {
-            $value = $value[0] ?? '';
-        }
-
-        return in_array(strtolower(trim((string) $value)), ['1', 'yes', 'y', 'true', 'on'], true);
+        // A CFDB7 checkbox arrives as an array — usually ['Yes'], sometimes the
+        // label the client saw, sometimes empty for "unticked".
+        return in_array(strtolower((string) $this->str($value)), ['1', 'yes', 'y', 'true', 'on'], true);
     }
 
     private function bump(string $key, int $by = 1): void
