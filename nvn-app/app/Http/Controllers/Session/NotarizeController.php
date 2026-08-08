@@ -155,7 +155,19 @@ class NotarizeController extends Controller
             $session->update(['verification_method' => 'uploaded_id', 'identity_verified' => true]);
         }
 
-        $final = $pdf->generate($request);
+        // A document the sealing engine cannot open is not an error in the
+        // ordinary sense — nothing is broken and nothing is lost. It is news
+        // for the notary, who is standing in front of a client, so it goes back
+        // to the editor with the placements intact rather than to an error page.
+        try {
+            $final = $pdf->generate($request);
+        } catch (\App\Exceptions\DocumentNotImportableException $e) {
+            AuditLogger::record('request.seal_refused', 'notarization_request', $request->id, [
+                'reason' => 'unsupported_pdf',
+            ], Auth::id());
+
+            return back()->withErrors(['document' => $e->getMessage()]);
+        }
 
         $session = $request->session;
         $session->update(['status' => 'completed', 'actual_end_at' => now()]);

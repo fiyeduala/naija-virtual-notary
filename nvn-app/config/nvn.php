@@ -141,4 +141,23 @@ return [
     'vapid_public_key'  => env('VAPID_PUBLIC_KEY', ''),
     'vapid_private_key' => env('VAPID_PRIVATE_KEY', ''),
 
+    /*
+    | Rewriting a PDF the free FPDI parser cannot open.
+    |
+    | FPDI's bundled parser understands PDF 1.4 and older. Anything saved by a
+    | current version of Word, Google Docs or Acrobat is 1.5+ and stores its
+    | cross-reference table as a compressed stream, which that parser refuses —
+    | so a perfectly ordinary document arrives and cannot be sealed.
+    |
+    | Either of these command line tools rewrites such a file as 1.4 without
+    | touching what it says. Left blank, they are looked for on PATH; set a full
+    | path if the host keeps them somewhere unusual. Neither is required for the
+    | application to run — without one, a 1.5+ PDF is refused with an
+    | explanation rather than a stack trace.
+    */
+    'pdf' => [
+        'qpdf'        => env('NVN_QPDF_PATH', 'qpdf'),
+        'ghostscript' => env('NVN_GHOSTSCRIPT_PATH', 'gs'),
+    ],
+
 ];

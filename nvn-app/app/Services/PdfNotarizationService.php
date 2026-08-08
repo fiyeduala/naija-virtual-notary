@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Exceptions\DocumentNotImportableException;
 use App\Models\NotarizationRequest;
 use App\Models\RequestDocument;
 use App\Support\AuditLogger;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use setasign\Fpdi\FpdiException;
 use setasign\Fpdi\Tcpdf\Fpdi;
 
 /**
@@ -24,7 +26,25 @@ use setasign\Fpdi\Tcpdf\Fpdi;
  */
 class PdfNotarizationService
 {
+    /** Rewritten copies made to get a modern PDF open; deleted before we return. */
+    private array $scratch = [];
+
+    public function __construct(private PdfNormalizer $normalizer) {}
+
     public function generate(NotarizationRequest $request): RequestDocument
+    {
+        try {
+            return $this->build($request);
+        } finally {
+            foreach ($this->scratch as $file) {
+                @unlink($file);
+            }
+
+            $this->scratch = [];
+        }
+    }
+
+    private function build(NotarizationRequest $request): RequestDocument
     {
         $request->loadMissing(['documents', 'notary.user', 'service', 'session.verificationRecord']);
 
@@ -72,7 +92,7 @@ class PdfNotarizationService
             }
         } else {
             // ── PDF source: import pages via FPDI ───────────────────────────
-            $pageCount = $pdf->setSourceFile($sourcePath);
+            $pageCount = $pdf->setSourceFile($this->importable($sourcePath));
 
             for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
                 $tplId = $pdf->importPage($pageNo);
@@ -127,6 +147,56 @@ class PdfNotarizationService
         ]);
 
         return $final;
+    }
+
+    /**
+     * A path to this PDF that FPDI will actually open.
+     *
+     * The bundled parser handles PDF 1.4. Word, Google Docs and Acrobat all
+     * write 1.5 or later, where the cross-reference table is a compressed
+     * stream — so the common case is a document that is in no way unusual and
+     * still cannot be imported. Where the server can rewrite it we do, silently;
+     * where it cannot we refuse with something a notary can act on, rather than
+     * letting FPDI's own message reach the screen.
+     *
+     * The probe is a separate throwaway Fpdi on purpose: a failed
+     * setSourceFile() leaves the parser half-initialised, and reusing that
+     * instance for the real render invites a second, stranger failure.
+     */
+    private function importable(string $path): string
+    {
+        if ($this->canImport($path)) {
+            return $path;
+        }
+
+        $rewritten = $this->normalizer->normalize($path);
+
+        if ($rewritten === null) {
+            throw new DocumentNotImportableException();
+        }
+
+        $this->scratch[] = $rewritten;
+
+        if (! $this->canImport($rewritten)) {
+            throw new DocumentNotImportableException();
+        }
+
+        Log::info('Sealed a PDF that needed rewriting first', [
+            'tool' => $this->normalizer->tool(),
+        ]);
+
+        return $rewritten;
+    }
+
+    private function canImport(string $path): bool
+    {
+        try {
+            (new Fpdi())->setSourceFile($path);
+
+            return true;
+        } catch (FpdiException) {
+            return false;
+        }
     }
 
     /** Extract DOCX content as basic HTML using ZipArchive (no PhpWord needed). */
