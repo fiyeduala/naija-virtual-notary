@@ -15,12 +15,22 @@ class OnboardingFeeController extends Controller
 {
     public function __construct(private PaystackService $paystack) {}
 
-    /** Landing page that explains the fee and starts payment. */
+    /**
+     * Landing page that explains the fee and starts payment.
+     *
+     * The same page joins a new partner and renews an existing one — it is the
+     * same fee buying the same year, and giving renewal its own screen would
+     * mean two places to keep the price and the wording in step.
+     *
+     * A partner who is paid up and nowhere near their renewal date is sent to
+     * their status page instead; they have nothing to do here. One who is inside
+     * the notice window, or has lapsed, is let through so they can pay again.
+     */
     public function show(): View|RedirectResponse
     {
         $profile = Auth::user()->notaryProfile;
 
-        if ($profile?->onboarding_fee_paid_at) {
+        if ($profile?->membershipActive() && ! $profile->membershipEndingSoon()) {
             return redirect()->route('notary.onboarding.status');
         }
 
@@ -28,6 +38,8 @@ class OnboardingFeeController extends Controller
 
         return view('notary.onboarding.fee', [
             'amountDisplay' => '₦' . number_format($amount / 100, 2),
+            'profile'       => $profile,
+            'isRenewal'     => (bool) $profile?->onboarding_fee_paid_at,
         ]);
     }
 
@@ -129,12 +141,34 @@ class OnboardingFeeController extends Controller
         ]);
 
         $profile = $payment->user->notaryProfile;
-        if ($profile && ! $profile->onboarding_fee_paid_at) {
-            $profile->update(['onboarding_fee_paid_at' => now()]);
-            AuditLogger::record('notary.onboarding_fee_paid', 'notary_profile', $profile->id, [
-                'reference' => $payment->paystack_reference,
-                'settled'   => $payment->settlement_method ?? 'paystack',
-            ], $payment->user_id);
+
+        if (! $profile) {
+            return;
         }
+
+        // The day they joined, written once and never rewritten — it is a fact
+        // about the partnership, not a running balance.
+        $isRenewal = (bool) $profile->onboarding_fee_paid_at;
+
+        if (! $isRenewal) {
+            $profile->update(['onboarding_fee_paid_at' => now()]);
+        }
+
+        // Every cleared partner fee buys another year, whether it is the first
+        // one or the fifth, and whether it came off the checkout page or out of
+        // an admin recording a bank transfer.
+        $profile->extendMembership();
+
+        AuditLogger::record(
+            $isRenewal ? 'notary.membership_renewed' : 'notary.onboarding_fee_paid',
+            'notary_profile',
+            $profile->id,
+            [
+                'reference'  => $payment->paystack_reference,
+                'settled'    => $payment->settlement_method ?? 'paystack',
+                'expires_at' => $profile->fresh()->membership_expires_at?->toDateString(),
+            ],
+            $payment->user_id,
+        );
     }
 }

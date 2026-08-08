@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Http\Controllers\Notary\OnboardingFeeController;
 use App\Models\NotarizationRequest;
 use App\Models\Payment;
+use App\Models\PlatformSetting;
 use App\Support\AuditLogger;
 use App\Support\SettlementMethod;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,12 @@ use Illuminate\Support\Str;
  */
 class OfflinePaymentService
 {
+    /**
+     * How recent an abandoned membership checkout has to be before a recorded
+     * transfer is treated as the same payment rather than a new one.
+     */
+    private const REUSE_WINDOW_DAYS = 30;
+
     public function __construct(private RequestFulfillmentService $fulfillment) {}
 
     /**
@@ -111,6 +118,55 @@ class OfflinePaymentService
             ->where('status', 'successful')
             ->latest('id')
             ->first();
+    }
+
+    /**
+     * Record a partner membership fee for a notary who never opened checkout.
+     *
+     * recordOnboardingFee() below needs a Payment row to settle, and one only
+     * exists if the notary pressed "Pay with Paystack" and abandoned it. A
+     * partner who simply transfers their yearly fee — which is most of them —
+     * leaves no such row, so there is nothing for an admin to click. This makes
+     * the row and settles it in one go, which is the same thing the checkout
+     * page does, minus Paystack.
+     */
+    public function recordMembershipFee(\App\Models\User $user, array $details, ?int $actorId = null): Payment
+    {
+        return DB::transaction(function () use ($user, $details, $actorId) {
+            // Reuse a recently abandoned attempt — the notary opened checkout,
+            // thought better of it and sent a transfer instead, which is one
+            // payment, not two. Older rows are left alone: a pending row from
+            // last year's signup is a different event, and settling it now would
+            // date this year's fee to then. A successful row is never touched at
+            // all; that is a year already bought, and this one buys another.
+            $payment = Payment::where('user_id', $user->id)
+                ->where('type', 'onboarding_fee')
+                ->whereIn('status', ['pending', 'failed'])
+                ->where('created_at', '>=', now()->subDays(self::REUSE_WINDOW_DAYS))
+                ->lockForUpdate()
+                ->latest('id')
+                ->first();
+
+            $amount = (int) ($details['amount'] ?? PlatformSetting::get(
+                'onboarding_fee_ngn',
+                config('nvn.onboarding_fee_ngn'),
+            ));
+
+            if (! $payment) {
+                $payment = Payment::create([
+                    'user_id'            => $user->id,
+                    'type'               => 'onboarding_fee',
+                    'status'             => 'pending',
+                    'currency'           => 'NGN',
+                    'amount'             => $amount,
+                    'paystack_reference' => $this->reference(),
+                ]);
+            } else {
+                $payment->update(['amount' => $amount, 'currency' => 'NGN']);
+            }
+
+            return $this->recordOnboardingFee($payment, $details, $actorId);
+        });
     }
 
     /** Record an onboarding fee that arrived outside Paystack. */

@@ -352,7 +352,24 @@
         @elseif(! $profile->onboarding_fee_paid_at)
         <div class="status-banner danger">
             <x-heroicon-o-credit-card style="width:20px;height:20px;flex-shrink:0;"/>
-            Your onboarding fee is not yet paid. <a href="{{ route('notary.onboarding.fee') }}">Pay now &rarr;</a>
+            Your membership fee is not yet paid. <a href="{{ route('notary.onboarding.fee') }}">Pay now &rarr;</a>
+        </div>
+        {{-- A lapse comes before the review and listing states: it is what is
+             actually keeping them out of the marketplace, and an approved,
+             listed notary who has lapsed would otherwise be told they are live. --}}
+        @elseif($profile->membershipLapsed())
+        <div class="status-banner danger">
+            <x-heroicon-o-exclamation-circle style="width:20px;height:20px;flex-shrink:0;"/>
+            Your membership ended on {{ $profile->membership_expires_at->format('j F Y') }},
+            so clients can no longer find or book you.
+            <a href="{{ route('notary.onboarding.fee') }}">Renew for a year &rarr;</a>
+        </div>
+        @elseif($profile->membershipEndingSoon())
+        <div class="status-banner warning">
+            <x-heroicon-o-clock style="width:20px;height:20px;flex-shrink:0;"/>
+            Your membership ends on {{ $profile->membership_expires_at->format('j F Y') }} —
+            {{ $profile->membershipDaysLeft() }} days left.
+            <a href="{{ route('notary.onboarding.fee') }}">Renew now &rarr;</a>
         </div>
         @elseif($profile->verification_status === 'pending')
         <div class="status-banner warning">

@@ -489,7 +489,28 @@ class ViewNotaryProfile extends ViewRecord
                     default     => 'gray',
                 }),
                 TextEntry::make('commission_rate')->suffix('%')->label('Commission rate'),
-                TextEntry::make('onboarding_fee_paid_at')->label('Fee paid at')->dateTime()->placeholder('Not paid'),
+                TextEntry::make('onboarding_fee_paid_at')->label('Partner since')->dateTime()->placeholder('Not paid'),
+
+                // "Partner since" says they joined; this says whether they are
+                // still paid up, which is what decides if clients can see them.
+                TextEntry::make('membership_expires_at')
+                    ->label('Membership')
+                    ->badge()
+                    ->state(fn ($record) => match (true) {
+                        $record->is_system_native        => 'In-house — never expires',
+                        ! $record->membership_expires_at => 'Never paid',
+                        $record->membershipLapsed()      => 'Ended ' . $record->membership_expires_at->format('j M Y'),
+                        default                          => 'Until ' . $record->membership_expires_at->format('j M Y')
+                            . ' (' . $record->membershipDaysLeft() . ' days)',
+                    })
+                    ->color(fn ($record) => match (true) {
+                        $record->is_system_native        => 'gray',
+                        ! $record->membership_expires_at => 'gray',
+                        $record->membershipLapsed()      => 'danger',
+                        $record->membershipEndingSoon()  => 'warning',
+                        default                          => 'success',
+                    }),
+
                 TextEntry::make('public_listing_enabled')->label('Listed')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No'),
             ])->columns(2),
 

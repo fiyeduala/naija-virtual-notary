@@ -23,3 +23,11 @@ Schedule::command('nvn:process-fallbacks')
 Schedule::command('queue:work --stop-when-empty --max-time=' . config('nvn.queue_max_time'))
     ->everyMinute()
     ->withoutOverlapping(10);
+
+// Yearly partner memberships — warn before they lapse, and after.
+// Once a day, mid-morning in Lagos rather than the app's UTC, so the mail
+// lands inside a working day instead of before dawn where it is read last.
+Schedule::command('nvn:membership-reminders')
+    ->dailyAt('09:00')
+    ->timezone('Africa/Lagos')
+    ->withoutOverlapping(30);

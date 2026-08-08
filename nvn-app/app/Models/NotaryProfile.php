@@ -24,10 +24,18 @@ class NotaryProfile extends Model
             'delegation_consent'     => 'boolean',
             'delegation_consent_at'  => 'datetime',
             'onboarding_fee_paid_at' => 'datetime',
+            'membership_expires_at'  => 'datetime',
+            'membership_reminded_at' => 'datetime',
             'approved_at'            => 'datetime',
             'commission_rate'        => 'integer',
         ];
     }
+
+    /** How long one partner fee buys. */
+    public const MEMBERSHIP_MONTHS = 12;
+
+    /** How far ahead a partner starts being told their membership is ending. */
+    public const RENEWAL_NOTICE_DAYS = 30;
 
     public function user(): BelongsTo
     {
@@ -70,10 +78,23 @@ class NotaryProfile extends Model
     }
 
     // Scopes
+
+    /**
+     * Notaries a client may see and book.
+     *
+     * Membership is part of this now. A partner whose year has run out is not
+     * removed, disabled or told they are gone — they simply stop appearing in
+     * the marketplace until they renew, which is what the yearly fee buys. Work
+     * already booked is untouched: a lapse must never strand a client who has
+     * paid, so nothing about an in-flight request looks at this scope.
+     */
     public function scopeListed($query)
     {
         return $query->where('verification_status', 'approved')
-                     ->where('public_listing_enabled', true);
+                     ->where('public_listing_enabled', true)
+                     ->where(fn ($q) => $q
+                         ->where('is_system_native', true)
+                         ->orWhere('membership_expires_at', '>', now()));
     }
 
     public function scopeSystemNative($query)
@@ -114,6 +135,74 @@ class NotaryProfile extends Model
             ->pluck('type')
             ->unique()
             ->count() === count(self::SEALING_ASSETS);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Membership
+    |--------------------------------------------------------------------------
+    |
+    | The partner fee buys a year on the platform, not a permanent place on it.
+    | onboarding_fee_paid_at still records the day someone joined and is never
+    | rewritten; membership_expires_at is what every live check reads.
+    */
+
+    /** Is this partner paid up? */
+    public function membershipActive(): bool
+    {
+        // The platform's own notary has no one to pay and no one to pay it.
+        // Nothing about the system-native profile should ever be able to lapse.
+        if ($this->is_system_native) {
+            return true;
+        }
+
+        return $this->membership_expires_at?->isFuture() ?? false;
+    }
+
+    /** Has a membership existed and run out, as opposed to never having started? */
+    public function membershipLapsed(): bool
+    {
+        return ! $this->is_system_native
+            && $this->membership_expires_at !== null
+            && $this->membership_expires_at->isPast();
+    }
+
+    /** Whole days until the membership ends. Negative once it has. */
+    public function membershipDaysLeft(): ?int
+    {
+        if ($this->is_system_native || $this->membership_expires_at === null) {
+            return null;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($this->membership_expires_at->startOfDay(), false);
+    }
+
+    /** Close enough to the end that the partner should be hearing about it. */
+    public function membershipEndingSoon(): bool
+    {
+        $days = $this->membershipDaysLeft();
+
+        return $days !== null && $days <= self::RENEWAL_NOTICE_DAYS;
+    }
+
+    /**
+     * Add another year of membership.
+     *
+     * Measured from whichever is later: today, or the expiry they already hold.
+     * A partner who renews a fortnight early keeps that fortnight — losing time
+     * by paying early would teach everyone to wait until the day they lapse.
+     */
+    public function extendMembership(): void
+    {
+        $from = $this->membershipActive() && $this->membership_expires_at
+            ? $this->membership_expires_at
+            : now();
+
+        $this->update([
+            'membership_expires_at'  => $from->copy()->addMonths(self::MEMBERSHIP_MONTHS),
+            // A fresh year means the last lapse warning is spent.
+            'membership_reminded_at' => null,
+        ]);
     }
 
     /** The amount the notary keeps, given a gross fee in minor units. */

@@ -34,6 +34,17 @@
         .status { background:#e8f3ea; border:1px solid #bcdcc3; color:#256b34; border-radius:9px; padding:10px 12px; font-size:13px; margin-bottom:8px; }
         .otp-input { letter-spacing:8px; text-align:center; font-size:22px; }
         .muted-link { background:none; color:var(--brand); width:auto; padding:0; margin-top:12px; font-weight:600; }
+        /* A second door on the sign-up page: notaries who land here are not
+           clients and need sending somewhere else before they fill the form in. */
+        .aside { margin-top:22px; padding-top:18px; border-top:1px solid var(--line); }
+        .aside h2 { font-size:14px; margin:0 0 6px; color:var(--ink); }
+        .aside p { font-size:13px; line-height:1.55; color:var(--muted); margin:0 0 12px; }
+        .aside a.aside-btn {
+            display:block; text-align:center; padding:11px 12px;
+            border:1px solid var(--brand); border-radius:9px;
+            color:var(--brand-dark); font-size:14px; font-weight:600; text-decoration:none;
+        }
+        .aside a.aside-btn:hover { background:var(--bg); }
     </style>
 </head>
 <body>

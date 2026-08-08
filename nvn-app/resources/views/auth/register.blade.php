@@ -32,4 +32,18 @@
 <div class="alt">
     Already have an account? <a href="{{ route('login') }}">Sign in</a>
 </div>
+
+{{-- This form creates a CLIENT account. A notary public who fills it in ends up
+     with the wrong kind of account and has to be sorted out by hand, so the
+     other route is offered here rather than only in the site navigation. --}}
+<div class="aside">
+    <h2>Are you a notary public and want to partner with us?</h2>
+    <p>
+        This form is for clients who need a document notarized. If you are a
+        commissioned notary public and want to take bookings on the platform,
+        apply to partner with us instead — we will review your credentials and
+        set up your notary account.
+    </p>
+    <a class="aside-btn" href="{{ route('notary.apply') }}">Apply to partner with us</a>
+</div>
 @endsection

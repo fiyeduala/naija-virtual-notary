@@ -25,13 +25,31 @@
     <div class="card">
         <div style="border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:20px; display:flex; flex-direction:column; gap:12px;">
             <div style="display:flex; align-items:center; justify-content:space-between;">
-                <span style="font-size:14px; font-weight:500; color:var(--ink);">Onboarding fee</span>
+                <span style="font-size:14px; font-weight:500; color:var(--ink);">Membership fee</span>
                 @if ($feePaid)
                     <span class="pill pill-approved">Paid</span>
                 @else
                     <span class="pill pill-pending">Not paid</span>
                 @endif
             </div>
+            {{-- The renewal date is the fact a partner actually needs from this
+                 page; "paid" only says they joined at some point. --}}
+            @if ($feePaid && ! $profile->is_system_native)
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                <span style="font-size:14px; font-weight:500; color:var(--ink);">Membership</span>
+                @if ($profile->membershipLapsed())
+                    <span class="pill pill-rejected">
+                        Ended {{ $profile->membership_expires_at->format('j M Y') }}
+                    </span>
+                @elseif ($profile->membership_expires_at)
+                    <span class="pill {{ $profile->membershipEndingSoon() ? 'pill-pending' : 'pill-approved' }}">
+                        Until {{ $profile->membership_expires_at->format('j M Y') }}
+                    </span>
+                @else
+                    <span class="pill pill-pending">Not set</span>
+                @endif
+            </div>
+            @endif
             <div style="display:flex; align-items:center; justify-content:space-between;">
                 <span style="font-size:14px; font-weight:500; color:var(--ink);">Review status</span>
                 <span class="pill pill-{{ $status }}">{{ ucfirst($status) }}</span>
@@ -41,7 +59,14 @@
         @if (! $feePaid)
             <a class="btn btn-block" href="{{ route('notary.onboarding.fee') }}" style="justify-content:center;">
                 <x-heroicon-o-credit-card style="width:16px;height:16px;"/>
-                Pay onboarding fee
+                Pay membership fee
+            </a>
+        @elseif ($profile->membershipEndingSoon())
+            {{-- Ahead of the review status: a lapsed membership is the thing
+                 stopping them being booked, whatever the review says. --}}
+            <a class="btn btn-block" href="{{ route('notary.onboarding.fee') }}" style="justify-content:center;">
+                <x-heroicon-o-arrow-path style="width:16px;height:16px;"/>
+                {{ $profile->membershipLapsed() ? 'Renew to be listed again' : 'Renew for another year' }}
             </a>
         @elseif ($status === 'pending')
             <div class="alert" style="background:var(--warning-bg); border:1px solid #e8c97a; color:var(--warning); display:flex; align-items:flex-start; gap:10px;">
