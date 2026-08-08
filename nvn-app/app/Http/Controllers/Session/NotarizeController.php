@@ -27,17 +27,23 @@ class NotarizeController extends Controller
         $this->authorizeNotarySide($request);
         $this->recordTakeOver($request);
 
-        $document = $request->documents()->where('file_type', 'document')->first();
-        abort_unless($document, 404);
+        $documents = $request->notarizableDocuments;
+        abort_unless($documents->isNotEmpty(), 404);
+
+        $document = $this->currentDocument($request);
 
         $ext = strtolower(pathinfo($document->original_filename ?? $document->file_url, PATHINFO_EXTENSION));
 
         return view('session.notarize', [
             'request'    => $request,
+            'documents'  => $documents,
             'document'   => $document,
             'fileExt'    => $ext,
             'assetSets'  => $this->availableAssetSets($request),
             'placements' => $document->placements()->get(),
+            // Which of the others are still bare, so the editor can say so
+            // before the notary reaches finalize and is turned back.
+            'pending'    => $this->unplacedDocuments($request),
         ]);
     }
 
@@ -45,7 +51,7 @@ class NotarizeController extends Controller
     public function document(NotarizationRequest $request)
     {
         $this->authorizeNotarySide($request);
-        $document = $request->documents()->where('file_type', 'document')->firstOrFail();
+        $document = $this->currentDocument($request);
 
         $ext  = strtolower(pathinfo($document->original_filename ?? $document->file_url, PATHINFO_EXTENSION));
         $mime = match ($ext) {
@@ -91,7 +97,7 @@ class NotarizeController extends Controller
             'placements.*.height'     => ['nullable', 'numeric', 'between:0,1'],
         ]);
 
-        $document = $request->documents()->where('file_type', 'document')->firstOrFail();
+        $document = $this->currentDocument($request);
 
         DB::transaction(function () use ($document, $data) {
             DocumentPlacement::where('document_id', $document->id)->delete();
@@ -113,10 +119,18 @@ class NotarizeController extends Controller
         });
 
         AuditLogger::record('document.placements_saved', 'notarization_request', $request->id, [
-            'count' => count($data['placements']),
+            'document_id' => $document->id,
+            'count'       => count($data['placements']),
         ], Auth::id());
 
-        return response()->json(['saved' => count($data['placements'])]);
+        return response()->json([
+            'saved'   => count($data['placements']),
+            // Named here so the editor can tell the notary what is still bare
+            // without a page reload after every save.
+            'pending' => $this->unplacedDocuments($request)
+                ->map(fn ($d) => ['id' => $d->id, 'label' => $d->label()])
+                ->values(),
+        ]);
     }
 
     /** Finalize: generate the sealed PDF, complete the request, notify the client. */
@@ -127,13 +141,18 @@ class NotarizeController extends Controller
         $session = $request->session;
         abort_unless($session, 404);
 
-        // Guard: never seal a document with nothing on it. The editor saves placements
-        // before submitting, so an empty table here means the save failed or was skipped.
-        $document = $request->documents()->where('file_type', 'document')->firstOrFail();
-        if (DocumentPlacement::where('document_id', $document->id)->doesntExist()) {
+        // Guard: never seal a document with nothing on it. Every document is
+        // checked, not just the primary one — the client paid for each of them
+        // and an unsealed extra is the failure they would only discover after
+        // presenting it. The ones still bare are named, because the notary is
+        // in front of a client and "one of your documents" is not actionable.
+        $bare = $this->unplacedDocuments($request);
+
+        if ($bare->isNotEmpty()) {
             return back()->withErrors([
-                'placements' => 'No signature, stamp or seal has been saved for this document. '
-                    . 'Place your items, click "Save placements", then finalize.',
+                'placements' => 'Nothing has been placed on ' . $bare->map->label()->join(', ', ' and ')
+                    . '. Open ' . ($bare->count() > 1 ? 'each one' : 'it') . ' from the tabs above, '
+                    . 'place your signature, stamp or seal, click "Save placements", then finalize.',
             ]);
         }
 
@@ -160,7 +179,7 @@ class NotarizeController extends Controller
         // for the notary, who is standing in front of a client, so it goes back
         // to the editor with the placements intact rather than to an error page.
         try {
-            $final = $pdf->generate($request);
+            $finals = $pdf->generate($request);
         } catch (\App\Exceptions\DocumentNotImportableException $e) {
             AuditLogger::record('request.seal_refused', 'notarization_request', $request->id, [
                 'reason' => 'unsupported_pdf',
@@ -178,13 +197,15 @@ class NotarizeController extends Controller
         ]);
 
         AuditLogger::record('request.completed', 'notarization_request', $request->id, [
-            'final_document_id' => $final->id,
+            'final_document_ids' => $finals->pluck('id')->all(),
         ], Auth::id());
 
         $request->client->notify(new DocumentReadyNotification($request));
 
         return redirect()->route('session.done', $request)
-            ->with('status', 'Notarization complete. The client has been notified.');
+            ->with('status', $finals->count() > 1
+                ? 'Notarization complete — ' . $finals->count() . ' sealed documents. The client has been notified.'
+                : 'Notarization complete. The client has been notified.');
     }
 
     public function done(NotarizationRequest $request): View
@@ -192,6 +213,51 @@ class NotarizeController extends Controller
         $this->authorizeNotarySide($request);
 
         return view('session.done', ['request' => $request]);
+    }
+
+    /**
+     * The document the notary is working on right now.
+     *
+     * The editor is still a one-document editor; a request with several of them
+     * moves between them with ?document=<id>, which is why every endpoint the
+     * editor calls resolves it the same way instead of assuming the primary
+     * upload. The id is checked against this request's own notarizable set, so
+     * it cannot be pointed at another client's file or at the ID scan.
+     */
+    private function currentDocument(NotarizationRequest $request): \App\Models\RequestDocument
+    {
+        $documents = $request->notarizableDocuments;
+
+        $requested = request('document');
+
+        $document = $requested
+            ? $documents->firstWhere('id', (int) $requested)
+            : $documents->first();
+
+        abort_unless($document, 404);
+
+        return $document;
+    }
+
+    /**
+     * Documents on this request with nothing placed on them yet.
+     *
+     * One query for the whole set rather than one per document: the guard, the
+     * editor's tab strip and the save response all ask this question, and on a
+     * five-document request that would otherwise be fifteen round trips.
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\RequestDocument>
+     */
+    private function unplacedDocuments(NotarizationRequest $request): \Illuminate\Support\Collection
+    {
+        $documents = $request->notarizableDocuments;
+
+        $placed = DocumentPlacement::whereIn('document_id', $documents->pluck('id'))
+            ->distinct()
+            ->pluck('document_id')
+            ->all();
+
+        return $documents->reject(fn ($d) => in_array($d->id, $placed, true))->values();
     }
 
     /**

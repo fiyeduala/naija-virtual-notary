@@ -37,7 +37,10 @@ class RequestPaymentController extends Controller
                 ->with('status', 'This request is already paid.');
         }
 
-        $amount = $request->service->priceFor($request->currency);
+        // Every document on the request, not just the primary one — see
+        // NotarizationRequest::feeMinor(). The client agreed to this same
+        // figure on the review screen, which reads it from the same place.
+        $amount = $request->feeMinor();
         $reference = $this->paystack->reference('req');
 
         Payment::create([

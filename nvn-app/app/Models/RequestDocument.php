@@ -29,4 +29,22 @@ class RequestDocument extends Model
     {
         return $this->hasMany(DocumentPlacement::class, 'document_id');
     }
+
+    /** For a sealed document: the upload it was made from. */
+    public function sourceDocument(): BelongsTo
+    {
+        return $this->belongsTo(RequestDocument::class, 'source_document_id');
+    }
+
+    /** For an upload: the sealed documents produced from it, newest last. */
+    public function sealedVersions(): HasMany
+    {
+        return $this->hasMany(RequestDocument::class, 'source_document_id');
+    }
+
+    /** A short name for this upload, for tabs and lists. */
+    public function label(): string
+    {
+        return $this->original_filename ?: ('Document #' . $this->id);
+    }
 }

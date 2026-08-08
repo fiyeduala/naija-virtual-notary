@@ -36,7 +36,10 @@ class ClientDashboardController extends Controller
 
         $completed = NotarizationRequest::where('client_id', $userId)
             ->where('status', RequestStatus::Completed)
-            ->with('finalDocument')
+            // Every sealed PDF, not just the first — a request with three
+            // documents has three finished files and the client paid for all of
+            // them, so all of them have to be reachable from here.
+            ->with('finalDocuments.sourceDocument')
             ->latest()
             ->get();
 

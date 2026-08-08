@@ -757,6 +757,13 @@
         });
     }
 
+    /* A request can have several documents and the tab strip in notarize.blade
+       navigates between them. It needs to flush this document's placements
+       before leaving, so the two are published here rather than the strip
+       having to reimplement the save. */
+    cfg.save    = savePlacements;
+    cfg.isDirty = function () { return dirty; };
+
     document.getElementById('save-btn').addEventListener('click', function () {
         setStatus('Saving…');
         savePlacements().then(function (data) {

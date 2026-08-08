@@ -113,6 +113,40 @@
 }
 
 #pdf-loading { text-align:center; padding: 40px 0; color: rgba(255,255,255,.7); font-size: 14px; }
+
+/* ── Document tabs ─────────────────────────────────────────────── */
+.doc-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.doc-tab {
+    display: inline-flex; align-items: center; gap: 7px;
+    max-width: 100%;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    font-size: 12.5px;
+    color: var(--ink);
+    text-decoration: none;
+    transition: border-color .12s, background .12s;
+}
+.doc-tab:hover { border-color: var(--brand); }
+.doc-tab.is-current { border-color: var(--brand); background: var(--brand-light); font-weight: 600; }
+.doc-tab-n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--line);
+    font-size: 11px; font-weight: 700;
+}
+.doc-tab.is-current .doc-tab-n { background: var(--brand); color: #fff; }
+.doc-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.doc-tab-flag {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 20px;
+    background: rgba(217,119,6,.13);
+    color: #b45309;
+    font-size: 10.5px; font-weight: 600;
+}
 </style>
 @endpush
 
@@ -141,6 +175,38 @@
 </div>
 
 <div class="shell">
+
+    {{-- Document tabs — only when there is more than one to move between --}}
+    @if ($documents->count() > 1)
+        @php $pendingIds = $pending->pluck('id')->all(); @endphp
+        <div class="card" style="margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+                <span class="text-sm" style="font-weight:600;">
+                    {{ $documents->count() }} documents to notarise
+                </span>
+                <span class="text-sm muted">
+                    Each gets its own seal and its own finished PDF. All of them must be
+                    marked up before you can finalize.
+                </span>
+            </div>
+            <div class="doc-tabs">
+                @foreach ($documents as $i => $doc)
+                    @php $isCurrent = $doc->id === $document->id; @endphp
+                    <a class="doc-tab @if($isCurrent) is-current @endif"
+                       href="{{ route('session.notarize', [$request, 'document' => $doc->id]) }}"
+                       @if($isCurrent) aria-current="page" @endif>
+                        <span class="doc-tab-n">{{ $i + 1 }}</span>
+                        <span class="doc-tab-name">{{ $doc->label() }}</span>
+                        @if (in_array($doc->id, $pendingIds, true))
+                            <span class="doc-tab-flag" title="Nothing placed yet">not marked up</span>
+                        @else
+                            <x-heroicon-s-check-circle style="width:14px;height:14px;color:var(--brand);flex-shrink:0;"/>
+                        @endif
+                    </a>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     {{-- Toolbar card --}}
     <div class="card" style="margin-bottom:14px;">
@@ -213,7 +279,8 @@
             @csrf
             <button class="btn btn-block" type="submit" style="justify-content:center;">
                 <x-heroicon-o-check-badge style="width:15px;height:15px;"/>
-                Finalize &amp; seal document
+                Finalize &amp; seal
+                {{ $documents->count() > 1 ? 'all ' . $documents->count() . ' documents' : 'document' }}
             </button>
         </form>
     </div>
@@ -227,8 +294,11 @@
 @endif
 <script>
   window.NVN_EDITOR = {
-    documentUrl: "{{ route('session.document', $request) }}",
-    saveUrl:     "{{ route('session.placements', $request) }}",
+    {{-- The document id rides along on both, so the editor keeps working on the
+         tab the notary opened without notarize-editor.js needing to know that a
+         request can have more than one document. --}}
+    documentUrl: "{{ route('session.document', [$request, 'document' => $document->id]) }}",
+    saveUrl:     "{{ route('session.placements', [$request, 'document' => $document->id]) }}",
     assetUrl:    "{{ url('session/' . $request->id . '/asset') }}",
     csrf:        "{{ csrf_token() }}",
     fileExt:     "{{ $fileExt }}",
@@ -236,4 +306,29 @@
   };
 </script>
 <script src="{{ asset('js/notarize-editor.js') }}"></script>
+@if ($documents->count() > 1)
+<script>
+  // Switching tabs is a page load, so anything not yet persisted would be lost.
+  // Save first, then follow the link. The editor's own beforeunload prompt is
+  // the backstop for when the save itself fails.
+  document.querySelectorAll('.doc-tab').forEach(function (tab) {
+      tab.addEventListener('click', function (e) {
+          var cfg = window.NVN_EDITOR;
+          if (!cfg || !cfg.isDirty || !cfg.isDirty()) return;
+
+          e.preventDefault();
+          var href = tab.getAttribute('href');
+          var status = document.getElementById('editor-status');
+          if (status) status.textContent = 'Saving before switching document…';
+
+          cfg.save().then(function () {
+              window.location.href = href;
+          }).catch(function (err) {
+              if (status) status.textContent = 'Could not save this document: ' + err.message
+                  + ' — your placements are still here. Try "Save placements" again.';
+          });
+      });
+  });
+</script>
+@endif
 @endsection

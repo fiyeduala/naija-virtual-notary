@@ -15,6 +15,14 @@ class NotarizationRequest extends Model
 
     protected $guarded = ['id'];
 
+    /**
+     * Uploads that are notarial work rather than evidence.
+     *
+     * The identification and the client's captured signature live on the same
+     * table and are neither sealed nor billed.
+     */
+    public const NOTARIZABLE_TYPES = ['document', 'additional'];
+
     protected function casts(): array
     {
         return [
@@ -70,10 +78,46 @@ class NotarizationRequest extends Model
         return $this->hasMany(RequestDocument::class, 'request_id');
     }
 
+    /**
+     * The uploads that get notarized, primary first.
+     *
+     * The client's ID and their signature capture ride on the same table but
+     * are evidence, not work: they are never sealed and never billed. This
+     * relation is the definition of "what was actually asked for", and both
+     * the price and the editor are driven from it so the two cannot disagree.
+     */
+    public function notarizableDocuments(): HasMany
+    {
+        return $this->hasMany(RequestDocument::class, 'request_id')
+                    ->whereIn('file_type', self::NOTARIZABLE_TYPES)
+                    // 'document' before 'additional' — the primary upload is the
+                    // one the client thinks of as "the" document, so it leads
+                    // the editor's tabs and seals first.
+                    ->orderByRaw("CASE WHEN file_type = 'document' THEN 0 ELSE 1 END")
+                    ->orderBy('id');
+    }
+
+    /** Every sealed output — one per notarized upload. */
+    public function finalDocuments(): HasMany
+    {
+        return $this->hasMany(RequestDocument::class, 'request_id')
+                    ->where('is_final_notarized', true)
+                    ->orderBy('id');
+    }
+
+    /**
+     * The first sealed document.
+     *
+     * Kept because a request had exactly one of these before additional
+     * documents were billed and sealed, and several screens still ask the
+     * yes/no question "is there a finished document yet?". Anything that
+     * offers the finished work to somebody should use finalDocuments().
+     */
     public function finalDocument(): HasOne
     {
         return $this->hasOne(RequestDocument::class, 'request_id')
-                    ->where('is_final_notarized', true);
+                    ->where('is_final_notarized', true)
+                    ->oldestOfMany('id');
     }
 
     public function session(): HasOne
@@ -94,6 +138,90 @@ class NotarizationRequest extends Model
     public function handledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'handled_by');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | What this request costs
+    |--------------------------------------------------------------------------
+    |
+    | Every document on a request is a separate notarial act — a separate seal,
+    | a separate signature, a separate finished PDF — so each is charged at the
+    | notary's full price for the service. The fee is defined here and nowhere
+    | else: the checkout, the review screen the client agrees to, and an admin
+    | recording a bank transfer all read it from this method, because a total
+    | computed twice is a total that will eventually disagree with itself.
+    */
+
+    /** How many documents are being notarized, and therefore billed. */
+    public function billableDocumentCount(): int
+    {
+        $count = $this->relationLoaded('notarizableDocuments')
+            ? $this->notarizableDocuments->count()
+            : $this->notarizableDocuments()->count();
+
+        // Intake will not accept a request without a primary document, so this
+        // floor should never bind. It exists so that a request which somehow
+        // arrives here with no documents is charged the old single-document
+        // price rather than being handed over for nothing.
+        return max(1, $count);
+    }
+
+    /** The full fee in minor units (kobo / cents). */
+    public function feeMinor(?string $currency = null): int
+    {
+        $currency ??= $this->currency ?: 'NGN';
+
+        $unitPrice = $this->service?->priceFor($currency) ?? 0;
+
+        return $unitPrice * $this->billableDocumentCount();
+    }
+
+    /** The full fee, formatted — e.g. "₦45,000.00". */
+    public function displayFee(?string $currency = null): string
+    {
+        $currency ??= $this->currency ?: 'NGN';
+
+        return static::money($this->feeMinor($currency), $currency);
+    }
+
+    /**
+     * What has actually cleared against this request, in minor units.
+     *
+     * A sum rather than a single row on purpose. A client may pay in parts —
+     * they paid for one document, then sent the rest by transfer — and the
+     * fee is settled when the parts add up, not when the first one arrives.
+     */
+    public function amountPaidMinor(): int
+    {
+        return (int) $this->payments()
+            ->where('type', 'request_fee')
+            ->where('status', 'successful')
+            ->sum('amount');
+    }
+
+    /** Still owed, in minor units. Never negative: an overpayment is a refund question. */
+    public function balanceMinor(): int
+    {
+        return max(0, $this->feeMinor() - $this->amountPaidMinor());
+    }
+
+    /** Has the whole fee arrived, however many payments it took? */
+    public function isFullyPaid(): bool
+    {
+        return $this->balanceMinor() === 0;
+    }
+
+    /** The outstanding balance, formatted. */
+    public function displayBalance(): string
+    {
+        return static::money($this->balanceMinor(), $this->currency ?: 'NGN');
+    }
+
+    /** Minor units to a readable figure. One place, so the symbols cannot drift. */
+    public static function money(int $minor, string $currency = 'NGN'): string
+    {
+        return ($currency === 'USD' ? '$' : '₦') . number_format($minor / 100, 2);
     }
 
     /**

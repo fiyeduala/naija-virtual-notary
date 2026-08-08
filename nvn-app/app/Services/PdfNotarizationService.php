@@ -6,18 +6,27 @@ use App\Exceptions\DocumentNotImportableException;
 use App\Models\NotarizationRequest;
 use App\Models\RequestDocument;
 use App\Support\AuditLogger;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use setasign\Fpdi\FpdiException;
 use setasign\Fpdi\Tcpdf\Fpdi;
 
 /**
- * Assembles the final notarized PDF.
+ * Assembles the final notarized PDFs.
  *
- * Imports the client's uploaded document, overlays the notary's placements
- * (signature / stamp / seal images and free text) at the coordinates recorded
- * by the editor, embeds notarization metadata, writes the result to private
- * storage, and computes a SHA-256 hash for the evidence trail.
+ * Imports each of the client's uploaded documents, overlays the notary's
+ * placements (signature / stamp / seal images and free text) at the coordinates
+ * recorded by the editor, embeds notarization metadata, writes the result to
+ * private storage, and computes a SHA-256 hash for the evidence trail.
+ *
+ * One sealed PDF per uploaded document, never a merged file: each document is
+ * its own notarial act, is charged as one, and will be presented to a different
+ * bank, registry or embassy from the others. Each output records the upload it
+ * came from in source_document_id, which is what lets a single document be
+ * re-sealed later without disturbing the finished versions of its siblings.
  *
  * Coordinates are stored NORMALIZED (0..1) relative to each page's width/height,
  * so they map correctly regardless of the PDF's actual point dimensions.
@@ -31,10 +40,47 @@ class PdfNotarizationService
 
     public function __construct(private PdfNormalizer $normalizer) {}
 
-    public function generate(NotarizationRequest $request): RequestDocument
+    /**
+     * Seal every document on the request.
+     *
+     * All or nothing: if the third document cannot be imported, the first two
+     * are rolled back with it. A half-sealed request would otherwise show the
+     * client a "your documents are ready" download containing some of what they
+     * paid for, and there would be nothing on the record to say which.
+     *
+     * @return \Illuminate\Support\Collection<int, RequestDocument> in upload order
+     */
+    public function generate(NotarizationRequest $request): Collection
     {
+        $request->loadMissing(['notarizableDocuments', 'notary.user', 'service', 'session.verificationRecord']);
+
+        $sources = $request->notarizableDocuments;
+        abort_unless($sources->isNotEmpty(), 422, 'No source document to notarize.');
+
         try {
-            return $this->build($request);
+            return DB::transaction(function () use ($request, $sources) {
+                // Seals produced before documents were sealed one by one have no
+                // source recorded, so the per-document supersession below cannot
+                // see them. They were the whole request's single output, and
+                // this run replaces them — leave them active and a re-sealed
+                // request would offer the client the old file alongside the new.
+                RequestDocument::where('request_id', $request->id)
+                    ->where('is_final_notarized', true)
+                    ->whereNull('source_document_id')
+                    ->update(['is_final_notarized' => false]);
+
+                $finals = $sources->map(fn (RequestDocument $source) => $this->build($request, $source));
+
+                AuditLogger::record('document.notarized', 'notarization_request', $request->id, [
+                    'documents' => $finals->map(fn (RequestDocument $d) => [
+                        'document_id' => $d->id,
+                        'source_id'   => $d->source_document_id,
+                        'hash'        => $d->file_hash_sha256,
+                    ])->all(),
+                ]);
+
+                return $finals;
+            });
         } finally {
             foreach ($this->scratch as $file) {
                 @unlink($file);
@@ -44,13 +90,9 @@ class PdfNotarizationService
         }
     }
 
-    private function build(NotarizationRequest $request): RequestDocument
+    /** Seal one uploaded document and record the result. */
+    private function build(NotarizationRequest $request, RequestDocument $source): RequestDocument
     {
-        $request->loadMissing(['documents', 'notary.user', 'service', 'session.verificationRecord']);
-
-        $source = $request->documents->firstWhere('file_type', 'document');
-        abort_unless($source, 422, 'No source document to notarize.');
-
         $sourcePath = Storage::disk('private')->path($source->file_url);
         $ext        = strtolower(pathinfo($source->original_filename ?? $source->file_url, PATHINFO_EXTENSION));
 
@@ -121,32 +163,46 @@ class PdfNotarizationService
         $tmp = tempnam(sys_get_temp_dir(), 'nvn_sealed_') . '.pdf';
         $pdf->Output($tmp, 'F');
 
-        $storedPath = 'notarized/' . $request->reference . '-' . now()->format('YmdHis') . '.pdf';
+        // The source id is in the path as well as the timestamp: two documents
+        // on the same request are sealed inside the same second, so the clock
+        // alone would have them overwrite each other.
+        $storedPath = 'notarized/' . $request->reference . '-' . $source->id . '-' . now()->format('YmdHis') . '.pdf';
         Storage::disk('private')->put($storedPath, file_get_contents($tmp));
         $hash = hash_file('sha256', $tmp);
         @unlink($tmp);
 
-        // Supersede any previous final document
+        // Supersede only the previous seal of THIS document. Its siblings are
+        // finished work in their own right and re-sealing one must not retire
+        // the others — which is exactly what the old request-wide update did.
         RequestDocument::where('request_id', $request->id)
             ->where('is_final_notarized', true)
+            ->where('source_document_id', $source->id)
             ->update(['is_final_notarized' => false]);
 
-        $final = RequestDocument::create([
-            'request_id'        => $request->id,
-            'uploaded_by'       => auth()->id(),
-            'file_url'          => $storedPath,
-            'original_filename' => $request->reference . '-notarized.pdf',
-            'file_hash_sha256'  => $hash,
-            'file_type'         => 'final_notarized',
-            'is_final_notarized'=> true,
+        return RequestDocument::create([
+            'request_id'         => $request->id,
+            'uploaded_by'        => auth()->id(),
+            'source_document_id' => $source->id,
+            'file_url'           => $storedPath,
+            'original_filename'  => $this->sealedName($request, $source),
+            'file_hash_sha256'   => $hash,
+            'file_type'          => 'final_notarized',
+            'is_final_notarized' => true,
         ]);
+    }
 
-        AuditLogger::record('document.notarized', 'notarization_request', $request->id, [
-            'document_id' => $final->id,
-            'hash'        => $hash,
-        ]);
+    /**
+     * What the client sees when the sealed file lands in their downloads.
+     *
+     * Carries the original name through, because someone who sent three
+     * documents needs to tell the sealed deed from the sealed affidavit
+     * without opening both.
+     */
+    private function sealedName(NotarizationRequest $request, RequestDocument $source): string
+    {
+        $base = Str::slug(pathinfo($source->original_filename ?? '', PATHINFO_FILENAME));
 
-        return $final;
+        return $request->reference . '-' . ($base ?: 'document-' . $source->id) . '-notarized.pdf';
     }
 
     /**

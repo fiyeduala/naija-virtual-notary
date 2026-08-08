@@ -21,7 +21,7 @@ class DocumentDownloadController extends Controller
 
         abort_unless($allowed, 403);
 
-        $final = $request->finalDocument()->first();
+        $final = $this->chosen($request);
         abort_unless($final, 404, 'No notarized document available yet.');
 
         AuditLogger::record('document.downloaded', 'notarization_request', $request->id, [
@@ -30,7 +30,27 @@ class DocumentDownloadController extends Controller
 
         return Storage::disk('private')->download(
             $final->file_url,
-            $request->reference . '-notarized.pdf'
+            $final->original_filename ?: $request->reference . '-notarized.pdf'
         );
+    }
+
+    /**
+     * Which sealed document was asked for.
+     *
+     * A request has one sealed PDF per document notarized, so the link carries
+     * ?document=<id>. Omitting it downloads the first, which is what every link
+     * written before additional documents were sealed does — those still work
+     * and still mean "the notarized document" on a single-document request.
+     *
+     * The id is matched inside this request's own finals rather than looked up
+     * directly, so it cannot be turned into a way to read another client's file.
+     */
+    private function chosen(NotarizationRequest $request): ?\App\Models\RequestDocument
+    {
+        $finals = $request->finalDocuments;
+
+        return request('document')
+            ? $finals->firstWhere('id', (int) request('document'))
+            : $finals->first();
     }
 }

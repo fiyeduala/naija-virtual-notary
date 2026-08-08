@@ -35,17 +35,24 @@ class OfflinePaymentService
     public function recordRequestFee(NotarizationRequest $request, array $details, ?int $actorId = null): Payment
     {
         return DB::transaction(function () use ($request, $details, $actorId) {
-            // Already settled — hand back the payment that exists and change
-            // nothing. Recording a fee twice is never what anyone meant, and a
-            // second successful row would double what the notary is owed and
-            // what the ledger says the client paid. If money really did arrive
-            // twice, that is a refund conversation, not another payment.
-            if ($paid = $this->settledFee($request)) {
+            // Paid in full — hand back the payment that exists and change
+            // nothing. A second successful row for a fee already covered would
+            // double what the notary is owed and what the ledger says the client
+            // paid. If money really did arrive twice, that is a refund
+            // conversation, not another payment.
+            //
+            // A request that is only PART paid is a different case and does not
+            // stop here. Someone who pays for one document and sends the balance
+            // by transfer has to be recordable, or the only way to close the gap
+            // is to edit rows by hand.
+            if ($request->isFullyPaid() && ($paid = $this->settledFee($request))) {
                 return $paid;
             }
 
             // Reuse the row the client abandoned at checkout if there is one:
-            // two payment rows for one fee would double what the notary is owed.
+            // two payment rows for one attempt would double what the notary is
+            // owed. A successful row is never reused — that is money that
+            // arrived, and this one is money on top of it.
             $payment = $request->payments()
                 ->where('type', 'request_fee')
                 ->whereIn('status', ['pending', 'failed'])
@@ -53,7 +60,12 @@ class OfflinePaymentService
                 ->latest('id')
                 ->first();
 
-            $amount = (int) ($details['amount'] ?? $request->service?->priceFor($request->currency) ?? 0);
+            // What is still owed, not the whole fee: on a top-up the earlier
+            // payment already covers part of it, and charging the full figure
+            // again is exactly the double-count this method exists to avoid.
+            // An admin who types an amount still wins, since a bank transfer can
+            // arrive short, rounded, or with the bank's charges taken out.
+            $amount = (int) ($details['amount'] ?? $request->balanceMinor());
 
             $attributes = $this->settlementAttributes($details, $actorId) + [
                 'amount'   => $amount,
@@ -84,11 +96,13 @@ class OfflinePaymentService
     }
 
     /**
-     * The request fee that has already cleared for this job, if any.
+     * The most recent request fee that has already cleared for this job, if any.
      *
      * Both the guard above and the admin form ask this same question — the form
      * so it can refuse with an explanation instead of a false success, the guard
-     * so two admins with the modal open at once cannot get past it.
+     * so two admins with the modal open at once cannot get past it. Neither
+     * treats it as "the fee is settled" on its own: with part payments allowed,
+     * that question is NotarizationRequest::isFullyPaid().
      */
     public function settledFee(NotarizationRequest $request): ?Payment
     {

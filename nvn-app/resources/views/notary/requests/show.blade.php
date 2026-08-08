@@ -34,7 +34,16 @@
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
                 <span class="text-sm muted">Fee</span>
-                <span class="text-sm" style="font-weight:600; color:var(--brand-dark);">{{ $request->service->displayPrice($request->currency) }}</span>
+                <span class="text-sm" style="font-weight:600; color:var(--brand-dark);">
+                    {{ $request->displayFee() }}
+                    {{-- The whole job, not the price of one document. A notary
+                         quoting from this line has to see what the client paid. --}}
+                    @if (($count = $request->billableDocumentCount()) > 1)
+                        <span class="muted" style="font-weight:400;">
+                            ({{ $request->service->displayPrice($request->currency) }} &times; {{ $count }} documents)
+                        </span>
+                    @endif
+                </span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--line);">
                 <span class="text-sm muted">Scheduled</span>

@@ -7,6 +7,7 @@ use App\Filament\Resources\NotarizationRequestResource;
 use App\Models\Payment;
 use App\Services\RequestFulfillmentService;
 use Filament\Actions;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
@@ -73,6 +74,24 @@ class ViewNotarizationRequest extends ViewRecord
                 TextEntry::make('notary.user.full_name')->label('Notary')->placeholder('—'),
                 TextEntry::make('handledBy.full_name')->label('Handled by (fallback)')->placeholder('—'),
                 TextEntry::make('currency'),
+                TextEntry::make('fee')
+                    ->label('Fee')
+                    ->state(fn ($record) => $record->displayFee()
+                        . ($record->billableDocumentCount() > 1
+                            ? ' (' . $record->billableDocumentCount() . ' documents)'
+                            : '')),
+                // Part payments are possible, so "paid" is a sum against a total
+                // rather than a yes/no. An outstanding balance is shown in red
+                // because it is the one number here that needs chasing.
+                TextEntry::make('balance')
+                    ->label('Received')
+                    ->state(fn ($record) => \App\Models\NotarizationRequest::money(
+                        $record->amountPaidMinor(), $record->currency,
+                    ) . ($record->balanceMinor() > 0
+                        ? ' — ' . $record->displayBalance() . ' outstanding'
+                        : ''))
+                    ->badge()
+                    ->color(fn ($record) => $record->balanceMinor() > 0 ? 'danger' : 'success'),
                 TextEntry::make('document_use')->label('Reason')->columnSpanFull(),
             ])->columns(2),
             Section::make('Scheduling')->schema([
@@ -81,31 +100,44 @@ class ViewNotarizationRequest extends ViewRecord
                     ->formatStateUsing(fn ($state) => $state ? 'Verified' : 'Not yet'),
                 TextEntry::make('session.verification_method')->label('Method')->placeholder('—'),
             ])->columns(3),
-            Section::make('Notarized document')
-                ->description('The sealed PDF produced at the end of the session — whether a partner notary or the admin desk completed it.')
+            Section::make('Notarized documents')
+                ->description('One sealed PDF per document notarized — whether a partner notary or the admin desk completed it.')
                 ->schema([
-                    TextEntry::make('finalDocument.original_filename')
-                        ->label('File')
-                        ->placeholder('Not sealed yet'),
-                    TextEntry::make('finalDocument.created_at')
-                        ->label('Sealed at')
-                        ->dateTime('j M Y · g:i A')
-                        ->placeholder('—'),
                     TextEntry::make('sealed_by')
                         ->label('Sealed by')
                         ->state(fn ($record) => $record->handledBy?->full_name
                             ?? $record->notary?->user?->full_name)
                         ->placeholder('—'),
-                    TextEntry::make('open_notarized')
-                        ->label('Document')
-                        ->state(fn ($record) => $record->finalDocument ? 'Open in a new tab' : null)
-                        ->placeholder('No sealed document on file yet')
-                        ->badge()
-                        ->color('success')
-                        ->url(fn ($record) => $record->finalDocument
-                            ? route('admin.requests.notarized', $record)
-                            : null)
-                        ->openUrlInNewTab(),
+                    TextEntry::make('sealed_count')
+                        ->label('Documents sealed')
+                        ->state(fn ($record) => $record->finalDocuments->count()
+                            . ' of ' . $record->billableDocumentCount())
+                        // A count that does not match is the one thing worth
+                        // spotting here: it means part of what the client paid
+                        // for has not been produced.
+                        ->color(fn ($record) => $record->finalDocuments->count() >= $record->billableDocumentCount()
+                            ? 'success'
+                            : 'warning')
+                        ->badge(),
+                    RepeatableEntry::make('finalDocuments')
+                        ->label('')
+                        ->placeholder('Not sealed yet')
+                        ->columnSpanFull()
+                        ->schema([
+                            TextEntry::make('original_filename')->label('File'),
+                            TextEntry::make('created_at')
+                                ->label('Sealed at')
+                                ->dateTime('j M Y · g:i A'),
+                            TextEntry::make('open')
+                                ->label('Document')
+                                ->state('Open in a new tab')
+                                ->badge()
+                                ->color('success')
+                                ->url(fn ($record) => route('admin.requests.notarized', [
+                                    $record->request_id, 'document' => $record->id,
+                                ]))
+                                ->openUrlInNewTab(),
+                        ])->columns(3),
                 ])->columns(2),
 
             Section::make('Delivery')->schema([

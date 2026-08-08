@@ -20,7 +20,14 @@ class NotarizedDocumentController extends Controller
 {
     public function view(NotarizationRequest $request)
     {
-        $final = $request->finalDocument()->first();
+        // ?document=<id> picks one of several sealed PDFs; without it, the first
+        // — which is what a single-document request has always meant.
+        $finals = $request->finalDocuments;
+
+        $final = request('document')
+            ? $finals->firstWhere('id', (int) request('document'))
+            : $finals->first();
+
         abort_unless($final, 404, 'This request has no notarized document yet.');
         abort_unless(
             Storage::disk('private')->exists($final->file_url),
@@ -34,7 +41,7 @@ class NotarizedDocumentController extends Controller
 
         return Storage::disk('private')->response(
             $final->file_url,
-            $request->reference . '-notarized.pdf',
+            $final->original_filename ?: $request->reference . '-notarized.pdf',
             ['Content-Type' => 'application/pdf'],
         );
     }

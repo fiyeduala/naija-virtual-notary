@@ -307,11 +307,20 @@
                         <span>{{ ($req->completed_at ?? $req->updated_at)->format('j M Y') }}</span>
                     </div>
                 </div>
-                @if($req->finalDocument)
-                <a href="{{ route('client.documents.download', $req) }}" class="download-badge">
-                    <x-heroicon-o-arrow-down-tray style="width:12px;height:12px;"/>
-                    Download
-                </a>
+                {{-- One badge per sealed document. A request with several is one
+                     job but several finished files, and merging them would hand
+                     someone a single PDF to take to three different places. --}}
+                @if($req->finalDocuments->isNotEmpty())
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                    @foreach($req->finalDocuments as $i => $final)
+                    <a href="{{ route('client.documents.download', [$req, 'document' => $final->id]) }}"
+                       class="download-badge"
+                       title="{{ $final->sourceDocument?->label() ?? $final->original_filename }}">
+                        <x-heroicon-o-arrow-down-tray style="width:12px;height:12px;"/>
+                        {{ $req->finalDocuments->count() > 1 ? 'Document ' . ($i + 1) : 'Download' }}
+                    </a>
+                    @endforeach
+                </div>
                 @endif
             </div>
             @empty
