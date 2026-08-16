@@ -61,6 +61,19 @@ class Branding
         return AppIcons::url(AppIcons::APPLE) ?? asset('icons/apple-touch-icon.png');
     }
 
+    /**
+     * The image a push notification shows beside its text.
+     *
+     * Absolute, because a service worker resolves it against its own scope and
+     * the notification may be drawn long after the tab that made it is gone.
+     * Every push pointed at /brand/icon-192.png, which has never existed on any
+     * machine — a 404 here is silent, the OS just draws its own default.
+     */
+    public static function pushIconUrl(): string
+    {
+        return AppIcons::url(192) ?? asset('icons/icon-192.png');
+    }
+
     /** The stored path, as Filament's FileUpload wants it. */
     public static function path(string $key): ?string
     {

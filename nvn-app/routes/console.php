@@ -31,3 +31,10 @@ Schedule::command('nvn:membership-reminders')
     ->dailyAt('09:00')
     ->timezone('Africa/Lagos')
     ->withoutOverlapping(30);
+
+// Approved notaries who never uploaded their signature, stamp or seal. Same
+// hour, an hour apart, so the two runs never share a mail window.
+Schedule::command('nvn:asset-reminders')
+    ->dailyAt('10:00')
+    ->timezone('Africa/Lagos')
+    ->withoutOverlapping(30);

@@ -57,8 +57,11 @@ self.addEventListener('push', event => {
     const title   = data.title   || 'Naija Virtual Notary';
     const options = {
         body:    data.body    || 'You have a new notification.',
-        icon:    data.icon    || '/brand/icon-192.png',
-        badge:   data.badge   || '/brand/icon-192.png',
+        // The committed shield, not /brand — brand holds an uploaded icon that
+        // may not be there. A 404 on these is silent: the OS quietly draws its
+        // own default, so nothing ever reported that this was wrong.
+        icon:    data.icon    || '/icons/icon-192.png',
+        badge:   data.badge   || '/icons/icon-192.png',
         vibrate: data.vibrate || [200, 100, 200],
         data:    { url: data.url || '/' },
     };

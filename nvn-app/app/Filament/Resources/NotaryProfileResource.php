@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\NotaryProfileResource\Pages;
 use App\Models\NotaryProfile;
 use App\Notifications\NotaryApplicationReviewed;
+use App\Notifications\NotaryAssetsReminder;
 use App\Services\OfflinePaymentService;
 use App\Support\AuditLogger;
 use Filament\Forms;
@@ -184,6 +185,44 @@ class NotaryProfileResource extends Resource
                             ->body('Membership now runs to ' . $expires?->format('j F Y') . '.')
                             ->success()
                             ->persistent()
+                            ->send();
+                    }),
+                // The scheduled run (nvn:asset-reminders) chases these on its
+                // own. This is for when you have just spoken to someone and
+                // want the email in front of them now, and it deliberately
+                // ignores the spacing that stops the automatic one nagging.
+                Tables\Actions\Action::make('remindAssets')
+                    ->label('Ask for missing marks')
+                    ->icon('heroicon-o-envelope')
+                    ->color('warning')
+                    ->visible(fn (NotaryProfile $r) => $r->verification_status === 'approved'
+                        && $r->user
+                        && ! $r->canSeal())
+                    ->requiresConfirmation()
+                    ->modalHeading('Ask for the missing marks')
+                    ->modalDescription(fn (NotaryProfile $r) => 'Emails ' . $r->user?->email
+                        . ' asking for their ' . implode(', ', $r->missingSealingAssets())
+                        . ', with a link to the upload page. They are also chased automatically '
+                        . 'once a week until they do it, so this is only needed to send one now.')
+                    ->modalSubmitActionLabel('Send it')
+                    ->action(function (NotaryProfile $r) {
+                        $r->update([
+                            'assets_reminded_at'    => now(),
+                            'assets_reminders_sent' => $r->assets_reminders_sent + 1,
+                        ]);
+
+                        $r->user->notify(new NotaryAssetsReminder($r));
+
+                        AuditLogger::record('notary.asset_reminder_sent', 'notary_profile', $r->id, [
+                            'missing' => $r->missingSealingAssets(),
+                            'by_hand' => true,
+                        ]);
+
+                        Notification::make()
+                            ->title('Reminder sent')
+                            ->body('Asked ' . $r->user->email . ' for their '
+                                . implode(', ', $r->missingSealingAssets()) . '.')
+                            ->success()
                             ->send();
                     }),
                 Tables\Actions\Action::make('toggleListing')

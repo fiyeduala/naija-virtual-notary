@@ -135,22 +135,13 @@ class NotaryReadiness extends Command
     /**
      * Which of the three marks are absent, named individually.
      *
-     * `canSeal()` answers yes or no, which is the right answer for the
-     * application and the wrong one for an email: it does not tell you whether
-     * to ask somebody for one file or for three.
+     * Lives on the model now, because the reminder email asks the same
+     * question and two answers to it is how they drift apart.
      *
      * @return list<string>
      */
     private function sealingGaps(NotaryProfile $profile): array
     {
-        $held = $profile->assets
-            ->filter(fn ($a) => filled($a->file_url))
-            ->pluck('type')
-            ->all();
-
-        return array_values(array_filter(
-            NotaryProfile::SEALING_ASSETS,
-            fn (string $type) => ! in_array($type, $held, true)
-        ));
+        return $profile->missingSealingAssets();
     }
 }

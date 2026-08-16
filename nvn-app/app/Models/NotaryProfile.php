@@ -127,14 +127,31 @@ class NotaryProfile extends Model
      */
     public function canSeal(): bool
     {
+        return $this->missingSealingAssets() === [];
+    }
+
+    /**
+     * Which of the three marks are absent, named individually.
+     *
+     * `canSeal()` answers yes or no, which is the right answer for a gate and
+     * the wrong one for an email: it cannot tell you whether to ask somebody
+     * for one file or for three.
+     *
+     * @return list<string>
+     */
+    public function missingSealingAssets(): array
+    {
         $assets = $this->relationLoaded('assets') ? $this->assets : $this->assets()->get();
 
-        return $assets
-            ->whereIn('type', self::SEALING_ASSETS)
+        $held = $assets
             ->filter(fn (NotaryAsset $a) => filled($a->file_url))
             ->pluck('type')
-            ->unique()
-            ->count() === count(self::SEALING_ASSETS);
+            ->all();
+
+        return array_values(array_filter(
+            self::SEALING_ASSETS,
+            fn (string $type) => ! in_array($type, $held, true)
+        ));
     }
 
     /*

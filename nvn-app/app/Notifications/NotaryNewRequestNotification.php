@@ -50,8 +50,8 @@ class NotaryNewRequestNotification extends Notification
         return [
             'title'   => 'New request — ' . $this->request->reference,
             'body'    => 'A client has submitted a paid notarization request. Tap to review.',
-            'icon'    => '/brand/icon-192.png',
-            'badge'   => '/brand/icon-192.png',
+            'icon'    => \App\Support\Branding::pushIconUrl(),
+            'badge'   => \App\Support\Branding::pushIconUrl(),
             'url'     => route('notary.requests.incoming'),
             'vibrate' => [200, 100, 200],
         ];
