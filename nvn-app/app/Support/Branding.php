@@ -52,16 +52,13 @@ class Branding
      * "D" came from. The committed shield is the floor, so there is always a
      * real image even before anyone uploads branding.
      *
-     * An SVG site icon is fine in the browser tab but iOS will not render one
-     * here, so it falls through to the shield rather than back to the "D".
+     * It wants a real 180px square, so this is the derived copy rather than the
+     * upload itself — which also means an SVG icon, fine in the browser tab but
+     * unreadable to iOS, lands on the shield instead of back on the "D".
      */
     public static function homeScreenIconUrl(): string
     {
-        $uploaded = static::path('site_icon');
-        $raster   = $uploaded !== null
-            && ! in_array(strtolower(pathinfo($uploaded, PATHINFO_EXTENSION)), ['svg', 'ico'], true);
-
-        return ($raster ? static::iconUrl() : null) ?? asset('icons/apple-touch-icon.png');
+        return AppIcons::url(AppIcons::APPLE) ?? asset('icons/apple-touch-icon.png');
     }
 
     /** The stored path, as Filament's FileUpload wants it. */
