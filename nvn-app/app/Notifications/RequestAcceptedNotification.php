@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\NotarizationRequest;
+use App\Notifications\Channels\WebPushChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -19,7 +20,20 @@ class RequestAcceptedNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', WebPushChannel::class];
+    }
+
+    public function toWebPush(object $notifiable): array
+    {
+        $when = optional($this->request->session)->scheduled_start_at;
+
+        return [
+            'title' => 'Notarization confirmed — ' . $this->request->reference,
+            'body'  => $when
+                ? 'Scheduled for ' . $when->format('l, j M · g:i A') . '.'
+                : 'Your request has been accepted.',
+            'url'   => route('client.dashboard'),
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

@@ -6,7 +6,9 @@ use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Models\User;
+use App\Notifications\Admin\NewUserRegisteredNotification;
 use App\Services\OtpService;
+use App\Support\AdminAlert;
 use App\Support\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -33,6 +35,8 @@ class RegisterController extends Controller
         ]);
 
         AuditLogger::record('user.registered', 'user', $user->id, [], $user->id);
+
+        AdminAlert::send(new NewUserRegisteredNotification($user));
 
         // Log them in but route to verification — unverified accounts are gated.
         Auth::login($user);

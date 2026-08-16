@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Client\IntakeRequest;
 use App\Models\NotarizationRequest;
 use App\Models\RequestDocument;
+use App\Notifications\Admin\RequestAwaitingPaymentNotification;
+use App\Support\AdminAlert;
 use App\Support\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -91,6 +93,10 @@ class ClientRequestController extends Controller
         });
 
         AuditLogger::record('request.created', 'notarization_request', $nrequest->id, [], $user->id);
+
+        // Documents are in, payment is not. Told to the desk on the phone only —
+        // if it clears in the next two minutes nobody wanted an email about it.
+        AdminAlert::send(new RequestAwaitingPaymentNotification($nrequest));
 
         return redirect()->route('client.marketplace.index', ['request' => $nrequest->id]);
     }

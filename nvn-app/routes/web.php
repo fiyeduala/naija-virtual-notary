@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Public marketing pages
+// Served from a route, not public/, because the site icon is uploaded at runtime.
+Route::get('/manifest.webmanifest', \App\Http\Controllers\ManifestController::class)->name('manifest');
+
 Route::get('/', fn () => view('public.home'))->name('home');
 Route::get('/about', fn () => view('public.about'))->name('about');
 Route::get('/how-it-works', fn () => view('public.how-it-works'))->name('how-it-works');

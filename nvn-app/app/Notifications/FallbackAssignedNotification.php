@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\NotarizationRequest;
+use App\Notifications\Channels\WebPushChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -19,7 +20,18 @@ class FallbackAssignedNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', WebPushChannel::class];
+    }
+
+    public function toWebPush(object $notifiable): array
+    {
+        return [
+            'title' => 'Request on your desk — ' . $this->request->reference,
+            'body'  => $this->trigger === 'system_native_selected'
+                ? 'A client booked the platform notary directly.'
+                : 'This request has fallen back to you. Tap to open it.',
+            'url'   => route('filament.admin.resources.notarization-requests.view', ['record' => $this->request->id]),
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

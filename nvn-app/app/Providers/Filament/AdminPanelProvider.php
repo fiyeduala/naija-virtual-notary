@@ -11,6 +11,8 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -45,6 +47,17 @@ class AdminPanelProvider extends PanelProvider
                 'primary' => Color::hex('#54B435'),
             ])
             ->font('Poppins')
+            // The push opt-in and the install button, in the panel's own topbar.
+            // Admins live in here rather than on the /notary screens, and an
+            // opt-in they never see is an opt-in nobody ever takes.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): View => view('partials.pwa-head'),
+            )
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_END,
+                fn (): View => view('partials.push-toggle', ['variant' => 'panel']),
+            )
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([

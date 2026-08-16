@@ -63,6 +63,12 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function isNotary(): bool { return $this->role === UserRole::Notary; }
     public function isAdmin(): bool  { return $this->role === UserRole::Admin; }
 
+    /** Every admin, for alerts that go to the desk rather than to one person. */
+    public function scopeAdmins($query)
+    {
+        return $query->where('role', UserRole::Admin);
+    }
+
     public function hasVerifiedEmail(): bool
     {
         return ! is_null($this->email_verified_at);

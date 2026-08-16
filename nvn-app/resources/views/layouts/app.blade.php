@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? 'Naija Virtual Notary' }}</title>
-    <meta name="theme-color" content="#54B435">
-    <link rel="manifest" href="{{ asset('manifest.json') }}">
-    <link rel="icon" href="{{ \App\Support\Branding::faviconUrl() }}">
+    @include('partials.pwa-head')
 
     {{-- Poppins via direct link tag (same as public pages — not CSS @import) --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -91,6 +89,7 @@
         /* Height-capped, width free: an uploaded logo of any proportion sits in
            the bar without pushing the nav around. */
         .brand-logo { height: 32px; width: auto; max-width: 200px; display: block; }
+
 
         .navbar-nav {
             display: flex;
@@ -359,6 +358,7 @@
     </div>
 
     <div class="navbar-right">
+        @include('partials.push-toggle', ['variant' => 'nav'])
         <span class="nav-user-name">{{ auth()->user()->full_name }}</span>
         <form method="POST" action="{{ route('logout') }}" style="margin:0;">
             @csrf
@@ -388,37 +388,6 @@
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
 }
-@auth
-@if(auth()->user()->isNotary())
-(async function () {
-    if (!('PushManager' in window) || !('serviceWorker' in navigator)) return;
-    const vapidKey = @json(config('nvn.vapid_public_key'));
-    if (!vapidKey) return;
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-        function urlBase64ToUint8Array(b) {
-            const pad = '='.repeat((4 - b.length % 4) % 4);
-            const base64 = (b + pad).replace(/-/g, '+').replace(/_/g, '/');
-            return Uint8Array.from([...atob(base64)].map(c => c.charCodeAt(0)));
-        }
-        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) });
-    }
-    const key = sub.getKey('p256dh'), auth = sub.getKey('auth');
-    fetch('{{ route('push.subscribe') }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content },
-        body: JSON.stringify({
-            endpoint: sub.endpoint,
-            p256dh: key  ? btoa(String.fromCharCode(...new Uint8Array(key)))  : null,
-            auth:   auth ? btoa(String.fromCharCode(...new Uint8Array(auth))) : null,
-        }),
-    });
-})();
-@endif
-@endauth
 </script>
 @stack('scripts')
 @include('partials.live-chat')

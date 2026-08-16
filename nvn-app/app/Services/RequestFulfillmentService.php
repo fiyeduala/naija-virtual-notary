@@ -8,9 +8,11 @@ use App\Models\NotarizationRequest;
 use App\Models\NotaryProfile;
 use App\Models\Payment;
 use App\Models\User;
+use App\Notifications\Admin\RequestPaidNotification;
 use App\Notifications\FallbackAssignedNotification;
 use App\Notifications\NotaryNewRequestNotification;
 use App\Notifications\RequestAcceptedNotification;
+use App\Support\AdminAlert;
 use App\Support\AuditLogger;
 use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
@@ -101,6 +103,11 @@ class RequestFulfillmentService
                 'reference' => $reference,
                 'settled'   => $payment->settlement_method ?? 'paystack',
             ], $request->client_id);
+
+            // Sent before the branch below, so it fires whether the request goes
+            // to a partner or straight to the admin desk. This is the revenue
+            // event, so it is the one admin alert that also gets an email.
+            AdminAlert::send(new RequestPaidNotification($request, $payment));
 
             // The client picked the platform's own notary straight from the
             // marketplace. There is no partner to wait on, so put it on the admin

@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\NotarizationRequest;
+use App\Notifications\Channels\WebPushChannel;
 use App\Support\Settings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -22,7 +23,17 @@ class RequestOverdueNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', WebPushChannel::class];
+    }
+
+    public function toWebPush(object $notifiable): array
+    {
+        return [
+            'title' => 'Awaiting a response — ' . $this->request->reference,
+            'body'  => ($this->request->notary?->user?->full_name ?? 'The assigned notary')
+                . ' has not answered a paid request.',
+            'url'   => route('notary.dashboard'),
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

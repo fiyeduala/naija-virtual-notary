@@ -7,8 +7,7 @@
     <meta name="description" content="{{ $description ?? 'Secure, fast, and accessible online notarization for Nigerians at home and in the diaspora. Notarize documents anytime, anywhere.' }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="manifest" href="{{ asset('manifest.json') }}">
-    <link rel="icon" href="{{ \App\Support\Branding::faviconUrl() }}">
+    @include('partials.pwa-head')
     <style>
         :root {
             --brand:       #54B435;

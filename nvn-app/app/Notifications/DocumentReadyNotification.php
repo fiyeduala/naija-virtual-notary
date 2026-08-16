@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\NotarizationRequest;
+use App\Notifications\Channels\WebPushChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -16,7 +17,16 @@ class DocumentReadyNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', WebPushChannel::class];
+    }
+
+    public function toWebPush(object $notifiable): array
+    {
+        return [
+            'title' => 'Your document is ready',
+            'body'  => 'Request ' . $this->request->reference . ' has been notarized. Tap to download.',
+            'url'   => route('client.documents.download', $this->request),
+        ];
     }
 
     public function toMail(object $notifiable): MailMessage

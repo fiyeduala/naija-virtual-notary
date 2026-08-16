@@ -40,7 +40,21 @@ class Branding
     /** What the browser tab should point at, with the old static file as backstop. */
     public static function faviconUrl(): string
     {
-        return static::iconUrl() ?? asset('brand/icon.png');
+        return static::iconUrl() ?? asset('icons/icon-32.png');
+    }
+
+    /**
+     * What iOS puts on the Home Screen.
+     *
+     * Safari never reads the manifest's icon list for this — it reads
+     * apple-touch-icon and nothing else, and with no such tag it screenshots
+     * the page or draws the first letter of the title, which is where the bare
+     * "D" came from. The committed shield is the floor, so there is always a
+     * real image even before anyone uploads branding.
+     */
+    public static function homeScreenIconUrl(): string
+    {
+        return static::iconUrl() ?? asset('icons/apple-touch-icon.png');
     }
 
     /** The stored path, as Filament's FileUpload wants it. */
