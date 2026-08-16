@@ -51,10 +51,17 @@ class Branding
      * the page or draws the first letter of the title, which is where the bare
      * "D" came from. The committed shield is the floor, so there is always a
      * real image even before anyone uploads branding.
+     *
+     * An SVG site icon is fine in the browser tab but iOS will not render one
+     * here, so it falls through to the shield rather than back to the "D".
      */
     public static function homeScreenIconUrl(): string
     {
-        return static::iconUrl() ?? asset('icons/apple-touch-icon.png');
+        $uploaded = static::path('site_icon');
+        $raster   = $uploaded !== null
+            && ! in_array(strtolower(pathinfo($uploaded, PATHINFO_EXTENSION)), ['svg', 'ico'], true);
+
+        return ($raster ? static::iconUrl() : null) ?? asset('icons/apple-touch-icon.png');
     }
 
     /** The stored path, as Filament's FileUpload wants it. */

@@ -133,9 +133,12 @@ class PlatformSettingsPage extends Page implements HasForms
                                 fn ($file) => 'logo.' . $file->getClientOriginalExtension()),
 
                         Forms\Components\FileUpload::make('site_icon')
-                            ->label('Icon (favicon)')
-                            ->helperText('The small square mark in the browser tab. A square PNG of 512×512 '
-                                . 'or smaller is ideal.')
+                            ->label('Icon (favicon & app icon)')
+                            ->helperText('The square mark in the browser tab, and the icon shown when the '
+                                . 'site is installed to a phone Home Screen or a desktop. A square PNG of '
+                                . '512×512 is ideal — iOS cannot use an SVG for the Home Screen, so an SVG '
+                                . 'here gets the built-in shield there instead. Leave blank and the shield '
+                                . 'is used everywhere.')
                             ->disk(\App\Support\Branding::DISK)
                             ->directory('')
                             ->visibility('public')
