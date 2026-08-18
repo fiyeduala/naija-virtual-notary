@@ -35,6 +35,7 @@ class NotarizationRequest extends Model
             'fallback_due_at'     => 'datetime',
             'fallback_alerted_at' => 'datetime',
             'submitted_at'        => 'datetime',
+            'payment_followed_up_at' => 'datetime',
             'paid_at'             => 'datetime',
             'accepted_at'         => 'datetime',
             'completed_at'        => 'datetime',
@@ -210,6 +211,33 @@ class NotarizationRequest extends Model
     public function isFullyPaid(): bool
     {
         return $this->balanceMinor() === 0;
+    }
+
+    /**
+     * Waiting on money that has never arrived.
+     *
+     * Narrower than "not fully paid": a request in flight can still owe a
+     * balance after a part payment, and that client is mid-job rather than
+     * stalled. This is the one who filled the form in and stopped.
+     */
+    public function awaitingPayment(): bool
+    {
+        return in_array($this->status, [RequestStatus::Draft, RequestStatus::Submitted], true)
+            && ! $this->isFullyPaid();
+    }
+
+    /**
+     * The database-side half of awaitingPayment(), for listing and filtering.
+     *
+     * Named differently on purpose: a scope whose name matches a real method on
+     * the model can only ever be reached through a builder, because the static
+     * form calls the instance method instead and fatals. It is also the wider
+     * of the two — status alone, since the paid total is a sum of rows rather
+     * than a column — so callers that care re-check awaitingPayment().
+     */
+    public function scopeUnpaid($query)
+    {
+        return $query->whereIn('status', [RequestStatus::Draft->value, RequestStatus::Submitted->value]);
     }
 
     /** The outstanding balance, formatted. */

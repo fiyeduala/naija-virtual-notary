@@ -46,6 +46,30 @@ class ViewNotarizationRequest extends ViewRecord
                     Notification::make()->title('Payment confirmed — request is now paid')->success()->send();
                 }),
 
+            // The same conversation the list offers, from the page where you
+            // can actually see what they asked for and what it costs.
+            Actions\Action::make('followUpPayment')
+                ->label('Follow up on payment')
+                ->icon('heroicon-o-chat-bubble-left-ellipsis')
+                ->color('warning')
+                ->visible(fn ($record) => $record->awaitingPayment() && $record->client)
+                ->modalHeading('Ask why this has not been paid')
+                ->modalDescription('Posts a message on this request. The client gets an email and a '
+                    . 'notification, and their reply comes back to the same thread.')
+                ->modalSubmitActionLabel('Send message')
+                ->modalWidth('2xl')
+                ->form(fn ($record) => NotarizationRequestResource::followUpFormSchema($record))
+                ->action(function ($record, array $data) {
+                    NotarizationRequestResource::sendFollowUp($record, $data['body']);
+                    $this->record->refresh();
+
+                    Notification::make()
+                        ->title('Follow-up sent')
+                        ->body('Messaged ' . ($record->client?->full_name ?? 'the client') . '.')
+                        ->success()
+                        ->send();
+                }),
+
             // Available for every sealed request, whoever notarized it.
             Actions\Action::make('view_notarized')
                 ->label('View notarized document')
