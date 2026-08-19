@@ -132,9 +132,23 @@ class PostResource extends Resource
                 Tables\Columns\TextColumn::make('title')
                     ->searchable()->sortable()->wrap()->limit(60),
 
+                // Three states, not two. A post marked published with a future
+                // date is live in the database and invisible on the site, and
+                // a green "Published" badge on it is the one label guaranteed
+                // to be read as "this went out".
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn ($state) => $state === 'published' ? 'success' : 'gray'),
+                    ->formatStateUsing(fn ($state, Post $p) => $state === 'published' && ! $p->isPublished()
+                        ? 'Scheduled'
+                        : ucfirst($state))
+                    ->color(fn ($state, Post $p) => match (true) {
+                        $state !== 'published'  => 'gray',
+                        ! $p->isPublished()     => 'info',
+                        default                 => 'success',
+                    })
+                    ->icon(fn ($state, Post $p) => $state === 'published' && ! $p->isPublished()
+                        ? 'heroicon-o-clock'
+                        : null),
 
                 Tables\Columns\TextColumn::make('published_at')
                     ->label('Published')
@@ -155,6 +169,17 @@ class PostResource extends Resource
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
                     ->options(['draft' => 'Draft', 'published' => 'Published']),
+
+                // Nothing sweeps these up otherwise: a scheduled post is not a
+                // draft and does not show on the site, so without a filter the
+                // only way to find what is queued is to read every date.
+                Tables\Filters\Filter::make('scheduled')
+                    ->label('Scheduled to go out')
+                    ->query(fn (Builder $query) => $query
+                        ->where('status', 'published')
+                        ->where('published_at', '>', now()))
+                    ->toggle(),
+
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([

@@ -125,7 +125,8 @@ class NotarizationRequestResource extends Resource
                     ->modalHeading('Ask several clients why they have not paid')
                     ->modalDescription('Only unpaid requests are messaged — anything else in the '
                         . 'selection is skipped. Each message is personalised with that client\'s '
-                        . 'name, reference and fee.')
+                        . 'name, reference and fee. Clients who never chose a notary are asked '
+                        . 'about that instead, whichever message you pick.')
                     ->modalSubmitActionLabel('Send messages')
                     ->form([
                         Select::make('template')
@@ -196,13 +197,29 @@ class NotarizationRequestResource extends Resource
     | back on the desk instead of in a mailbox nobody watches.
     */
 
-    /** @return array<string, string> */
-    public static function followUpTemplates(): array
+    /**
+     * @return array<string, string>
+     *
+     * Given a request, the list narrows to what makes sense for it. A client
+     * who never chose a notary has no price and has never seen a payment
+     * screen, so "your payment was declined" and "the price may be the
+     * problem" are both about something that has not happened to them yet.
+     */
+    public static function followUpTemplates(?NotarizationRequest $request = null): array
     {
+        if ($request && ! $request->isPriced()) {
+            return [
+                'no_notary' => 'Stopped before choosing a notary',
+                'check_in'  => 'Friendly check-in — did something go wrong?',
+                'custom'    => 'Write my own',
+            ];
+        }
+
         return [
             'check_in'        => 'Friendly check-in — did something go wrong?',
             'payment_trouble' => 'Payment did not go through / offer bank transfer',
             'pricing'         => 'The price may be the problem',
+            'no_notary'       => 'Stopped before choosing a notary',
             'custom'          => 'Write my own',
         ];
     }
@@ -217,17 +234,41 @@ class NotarizationRequestResource extends Resource
     {
         $name = str($request->client?->full_name ?? '')->before(' ')->toString() ?: 'there';
         $ref  = $request->reference;
-        $fee  = $request->displayFee();
+        $fee  = $request->displayFeeOrPending();
+
+        // The bulk action picks one template for a whole selection, which can
+        // mix clients who stalled at the payment screen with clients who never
+        // reached it. Telling someone their payment was declined when they
+        // never chose a notary is worse than not writing at all, so an
+        // unpriced request answers the question it is actually in.
+        if (! $request->isPriced() && in_array($template, ['payment_trouble', 'pricing'], true)) {
+            $template = 'no_notary';
+        }
+
+        // "Waiting on payment" is only true once there is something to pay.
+        $stalled = $request->isPriced()
+            ? 'is still waiting on payment'
+            : 'is still open — it has not been sent to a notary yet';
 
         return match ($template) {
             'check_in' => <<<TXT
             Hello {$name},
 
-            We noticed your notarization request {$ref} is still waiting on payment, and we wanted to check in rather than leave you to it.
+            We noticed your notarization request {$ref} {$stalled}, and we wanted to check in rather than leave you to it.
 
             Did you run into a hitch finishing it — a card that would not go through, a page that would not load, or something about the request itself you would like changed before you pay? If the price is the sticking point, tell us that too.
 
             Just reply to this message and a person will read it.
+            TXT,
+
+            'no_notary' => <<<TXT
+            Hello {$name},
+
+            Thank you for uploading your document to us — your request {$ref} is saved and nothing has been lost.
+
+            It looks like you stopped at the point of choosing a notary, and we wanted to ask what got in the way rather than assume. The usual reasons are that the choice was not obvious, none of the available times worked, or the cost was not what you expected. Any of those we can help with directly — we can recommend a notary for the kind of document you uploaded, find you a different time, or tell you what it would come to before you commit to anything.
+
+            Reply to this message and a person will read it and pick it up from there.
             TXT,
 
             'payment_trouble' => <<<TXT
@@ -283,7 +324,8 @@ class NotarizationRequestResource extends Resource
                 ->label('This request')
                 ->content(fn () => $request->reference
                     . ' · ' . ($request->client?->full_name ?? 'unknown client')
-                    . ' · ' . $request->displayFee()
+                    . ' · ' . $request->displayFeeOrPending()
+                    . ($request->isPriced() ? '' : ' · no notary chosen')
                     . ' · created ' . $request->created_at?->diffForHumans()
                     . ($request->payment_followups_sent > 0
                         ? ' · already chased ' . $request->payment_followups_sent . 'x, last '
@@ -292,15 +334,18 @@ class NotarizationRequestResource extends Resource
 
             Select::make('template')
                 ->label('Opening message')
-                ->options(static::followUpTemplates())
-                ->default('check_in')
+                ->options(static::followUpTemplates($request))
+                ->default($request->isPriced() ? 'check_in' : 'no_notary')
                 ->live()
                 ->afterStateUpdated(fn ($state, Set $set) => $set('body', static::followUpBody($state, $request)))
                 ->helperText('Pick one and edit it — it is a starting point, not a form letter.'),
 
             Textarea::make('body')
                 ->label('Message')
-                ->default(fn () => static::followUpBody('check_in', $request))
+                ->default(fn () => static::followUpBody(
+                    $request->isPriced() ? 'check_in' : 'no_notary',
+                    $request,
+                ))
                 ->rows(14)
                 ->required()
                 ->maxLength(5000)

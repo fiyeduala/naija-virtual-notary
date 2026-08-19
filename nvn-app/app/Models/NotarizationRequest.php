@@ -98,6 +98,23 @@ class NotarizationRequest extends Model
                     ->orderBy('id');
     }
 
+    /**
+     * Everything the client actually sent, sealed output excluded.
+     *
+     * Wider than notarizableDocuments() on purpose: this is "what is on this
+     * request to look at", so it includes the identification and the captured
+     * signature, which are evidence rather than billable work. The admin
+     * preview uses it, because on a request that stalled before a notary was
+     * chosen there is nothing else to see.
+     */
+    public function uploadedDocuments(): HasMany
+    {
+        return $this->hasMany(RequestDocument::class, 'request_id')
+                    ->where('is_final_notarized', false)
+                    ->orderByRaw("CASE WHEN file_type = 'document' THEN 0 ELSE 1 END")
+                    ->orderBy('id');
+    }
+
     /** Every sealed output — one per notarized upload. */
     public function finalDocuments(): HasMany
     {
@@ -214,6 +231,19 @@ class NotarizationRequest extends Model
     }
 
     /**
+     * Is there a price at all yet?
+     *
+     * The fee comes from the service, and the service is chosen at the same
+     * moment as the notary — see MarketplaceController::select(). So a client
+     * who uploaded a document and stopped before picking anyone has no
+     * service, and every money method on this model answers zero for them.
+     */
+    public function isPriced(): bool
+    {
+        return $this->service_id !== null;
+    }
+
+    /**
      * Waiting on money that has never arrived.
      *
      * Narrower than "not fully paid": a request in flight can still owe a
@@ -222,8 +252,26 @@ class NotarizationRequest extends Model
      */
     public function awaitingPayment(): bool
     {
-        return in_array($this->status, [RequestStatus::Draft, RequestStatus::Submitted], true)
-            && ! $this->isFullyPaid();
+        if (! in_array($this->status, [RequestStatus::Draft, RequestStatus::Submitted], true)) {
+            return false;
+        }
+
+        // An unpriced request is the stalled case in its purest form, but it
+        // is the one the arithmetic gets backwards: with no service there is
+        // no fee, so the balance is zero and isFullyPaid() answers true. The
+        // client who uploaded a document and never chose a notary would drop
+        // out of the follow-up list entirely — and they are the most worth
+        // chasing, not the least.
+        //
+        // Deliberately not fixed inside isFullyPaid(). That method answers
+        // "is anything still owed", which offline settlement and the payments
+        // list both rely on, and an unpriced request genuinely owes nothing
+        // yet. The wrong answer is only wrong for this question.
+        if (! $this->isPriced()) {
+            return true;
+        }
+
+        return ! $this->isFullyPaid();
     }
 
     /**
@@ -244,6 +292,18 @@ class NotarizationRequest extends Model
     public function displayBalance(): string
     {
         return static::money($this->balanceMinor(), $this->currency ?: 'NGN');
+    }
+
+    /**
+     * The fee, for anywhere that "no price yet" is a real answer.
+     *
+     * displayFee() renders an unpriced request as ₦0.00, which is fine on an
+     * admin screen next to an empty notary column and actively misleading in
+     * a message to a client, who would read it as free.
+     */
+    public function displayFeeOrPending(): string
+    {
+        return $this->isPriced() ? $this->displayFee() : 'not set yet';
     }
 
     /** Minor units to a readable figure. One place, so the symbols cannot drift. */

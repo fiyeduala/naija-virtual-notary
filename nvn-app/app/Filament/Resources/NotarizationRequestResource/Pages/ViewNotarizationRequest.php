@@ -100,8 +100,10 @@ class ViewNotarizationRequest extends ViewRecord
                 TextEntry::make('currency'),
                 TextEntry::make('fee')
                     ->label('Fee')
-                    ->state(fn ($record) => $record->displayFee()
-                        . ($record->billableDocumentCount() > 1
+                    // "not set yet" rather than ₦0.00 — an unpriced request has
+                    // no service, and a zero here reads as free.
+                    ->state(fn ($record) => $record->displayFeeOrPending()
+                        . ($record->isPriced() && $record->billableDocumentCount() > 1
                             ? ' (' . $record->billableDocumentCount() . ' documents)'
                             : '')),
                 // Part payments are possible, so "paid" is a sum against a total
@@ -124,6 +126,40 @@ class ViewNotarizationRequest extends ViewRecord
                     ->formatStateUsing(fn ($state) => $state ? 'Verified' : 'Not yet'),
                 TextEntry::make('session.verification_method')->label('Method')->placeholder('—'),
             ])->columns(3),
+            // Before the sealed section, because on a stalled draft this is the
+            // only section with anything in it — and reading what the client
+            // uploaded is how you decide whether the request is worth chasing.
+            Section::make('Uploaded documents')
+                ->description('What the client sent, including identification and signature. Available from the moment of upload, whether or not a notary has been chosen.')
+                ->collapsible()
+                ->schema([
+                    RepeatableEntry::make('uploadedDocuments')
+                        ->label('')
+                        ->placeholder('Nothing uploaded yet')
+                        ->columnSpanFull()
+                        ->schema([
+                            TextEntry::make('original_filename')
+                                ->label('File')
+                                ->placeholder('—'),
+                            TextEntry::make('file_type')
+                                ->label('Type')
+                                ->badge()
+                                ->color(fn ($state) => $state === 'document' ? 'primary' : 'gray'),
+                            TextEntry::make('created_at')
+                                ->label('Uploaded')
+                                ->dateTime('j M Y · g:i A'),
+                            TextEntry::make('open')
+                                ->label('Preview')
+                                ->state('Open in a new tab')
+                                ->badge()
+                                ->color('info')
+                                ->url(fn ($record) => route('admin.requests.document', [
+                                    $record->request_id, $record->id,
+                                ]))
+                                ->openUrlInNewTab(),
+                        ])->columns(4),
+                ]),
+
             Section::make('Notarized documents')
                 ->description('One sealed PDF per document notarized — whether a partner notary or the admin desk completed it.')
                 ->schema([

@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\CredentialDownloadController;
 use App\Http\Controllers\Admin\NotarizedDocumentController;
 use App\Http\Controllers\Admin\NotaryAssetViewController;
 use App\Http\Controllers\Admin\NotaryReviewController;
+use App\Http\Controllers\Admin\RequestDocumentController;
 use App\Http\Controllers\Notary\NotaryApplicationController;
 use App\Http\Controllers\Notary\NotaryProfileController;
 use App\Http\Controllers\Notary\OnboardingFeeController;
@@ -54,4 +55,5 @@ Route::middleware(['auth', 'verified.otp', 'role:admin'])->group(function () {
     Route::get('/admin/credentials/{credential}/download', [CredentialDownloadController::class, 'download'])->name('admin.credentials.download');
     Route::get('/admin/assets/{asset}/view', [NotaryAssetViewController::class, 'view'])->name('admin.assets.view');
     Route::get('/admin/requests/{request}/notarized', [NotarizedDocumentController::class, 'view'])->name('admin.requests.notarized');
+    Route::get('/admin/requests/{request}/documents/{document}', [RequestDocumentController::class, 'view'])->name('admin.requests.document');
 });
