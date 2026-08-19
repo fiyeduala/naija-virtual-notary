@@ -10,10 +10,10 @@ use Filament\Actions;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
-use Illuminate\Support\Facades\Route;
 
 class ViewNotarizationRequest extends ViewRecord
 {
@@ -89,25 +89,6 @@ class ViewNotarizationRequest extends ViewRecord
         ];
     }
 
-    /**
-     * Is the uploaded-document viewer reachable?
-     *
-     * route() throws when a name is missing, and a throw inside an infolist
-     * entry takes the entire page with it — the fee, the status, the client,
-     * the sealed output, all of it — over a preview link. That is exactly what
-     * happened to this page: the route is registered in routes/notary.php, but
-     * a server still holding a route cache built before that line existed does
-     * not know about it, and answers with a 500 on the one screen an admin
-     * opens to triage a stalled request.
-     *
-     * `php artisan route:clear` fixes the cause. This makes the symptom a grey
-     * badge that names the fix instead of an error page that hides it.
-     */
-    private static function canPreviewUploads(): bool
-    {
-        return Route::has('admin.requests.document');
-    }
-
     public function infolist(Infolist $infolist): Infolist
     {
         return $infolist->schema([
@@ -168,17 +149,13 @@ class ViewNotarizationRequest extends ViewRecord
                             TextEntry::make('created_at')
                                 ->label('Uploaded')
                                 ->dateTime('j M Y · g:i A'),
-                            TextEntry::make('open')
+                            // Opens over the page rather than in a new tab: the
+                            // point of reading these is to judge the request,
+                            // and the request is what a new tab covers up.
+                            ViewEntry::make('preview')
                                 ->label('Preview')
-                                ->state(fn () => static::canPreviewUploads()
-                                    ? 'Open in a new tab'
-                                    : 'Unavailable — clear the route cache')
-                                ->badge()
-                                ->color(fn () => static::canPreviewUploads() ? 'info' : 'gray')
-                                ->url(fn ($record) => static::canPreviewUploads()
-                                    ? route('admin.requests.document', [$record->request_id, $record->id])
-                                    : null)
-                                ->openUrlInNewTab(),
+                                ->view('filament.infolists.document-preview')
+                                ->viewData(['kind' => 'upload']),
                         ])->columns(4),
                 ]),
 
@@ -210,15 +187,10 @@ class ViewNotarizationRequest extends ViewRecord
                             TextEntry::make('created_at')
                                 ->label('Sealed at')
                                 ->dateTime('j M Y · g:i A'),
-                            TextEntry::make('open')
+                            ViewEntry::make('preview')
                                 ->label('Document')
-                                ->state('Open in a new tab')
-                                ->badge()
-                                ->color('success')
-                                ->url(fn ($record) => route('admin.requests.notarized', [
-                                    $record->request_id, 'document' => $record->id,
-                                ]))
-                                ->openUrlInNewTab(),
+                                ->view('filament.infolists.document-preview')
+                                ->viewData(['kind' => 'sealed']),
                         ])->columns(3),
                 ])->columns(2),
 
