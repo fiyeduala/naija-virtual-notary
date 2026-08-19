@@ -13,6 +13,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Facades\Route;
 
 class ViewNotarizationRequest extends ViewRecord
 {
@@ -88,6 +89,25 @@ class ViewNotarizationRequest extends ViewRecord
         ];
     }
 
+    /**
+     * Is the uploaded-document viewer reachable?
+     *
+     * route() throws when a name is missing, and a throw inside an infolist
+     * entry takes the entire page with it — the fee, the status, the client,
+     * the sealed output, all of it — over a preview link. That is exactly what
+     * happened to this page: the route is registered in routes/notary.php, but
+     * a server still holding a route cache built before that line existed does
+     * not know about it, and answers with a 500 on the one screen an admin
+     * opens to triage a stalled request.
+     *
+     * `php artisan route:clear` fixes the cause. This makes the symptom a grey
+     * badge that names the fix instead of an error page that hides it.
+     */
+    private static function canPreviewUploads(): bool
+    {
+        return Route::has('admin.requests.document');
+    }
+
     public function infolist(Infolist $infolist): Infolist
     {
         return $infolist->schema([
@@ -150,12 +170,14 @@ class ViewNotarizationRequest extends ViewRecord
                                 ->dateTime('j M Y · g:i A'),
                             TextEntry::make('open')
                                 ->label('Preview')
-                                ->state('Open in a new tab')
+                                ->state(fn () => static::canPreviewUploads()
+                                    ? 'Open in a new tab'
+                                    : 'Unavailable — clear the route cache')
                                 ->badge()
-                                ->color('info')
-                                ->url(fn ($record) => route('admin.requests.document', [
-                                    $record->request_id, $record->id,
-                                ]))
+                                ->color(fn () => static::canPreviewUploads() ? 'info' : 'gray')
+                                ->url(fn ($record) => static::canPreviewUploads()
+                                    ? route('admin.requests.document', [$record->request_id, $record->id])
+                                    : null)
                                 ->openUrlInNewTab(),
                         ])->columns(4),
                 ]),
