@@ -115,6 +115,7 @@
         }
     </style>
     @stack('styles')
+    @include('partials.meta-pixel')
 </head>
 <body>
 

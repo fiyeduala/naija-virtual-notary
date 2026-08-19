@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\RequestStatus;
 use App\Enums\UserRole;
+use App\Jobs\ReportEventToMeta;
 use App\Models\NotarizationRequest;
 use App\Models\NotaryProfile;
 use App\Models\Payment;
@@ -72,6 +73,13 @@ class RequestFulfillmentService
                 'status'       => 'successful',
                 'completed_at' => $payment->completed_at ?? now(),
             ]);
+
+            // Dispatched here and not at the end of the method, because every
+            // return below this point is a payment that still cleared: a part
+            // payment against an already-paid request bails at the status guard
+            // and is just as much revenue as the first one. The job is
+            // afterCommit, so a rolled-back settlement reports nothing.
+            ReportEventToMeta::dispatch($payment->id, 'Purchase');
 
             $request = $payment->request()->lockForUpdate()->first();
 

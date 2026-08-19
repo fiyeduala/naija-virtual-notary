@@ -160,4 +160,46 @@ return [
         'ghostscript' => env('NVN_GHOSTSCRIPT_PATH', 'gs'),
     ],
 
+    /*
+    | Meta (Facebook) advertising — Conversions API.
+    |
+    | Reports a conversion to Meta when money actually clears, so an ad is
+    | optimised against paid notarizations rather than against people who
+    | reached the checkout page and left. The report is sent server to server
+    | from a queued job; the browser pixel only sets the click cookies and
+    | reports page views.
+    |
+    | 'dataset_id' is the number Events Manager calls the dataset (or pixel) ID.
+    | 'access_token' belongs to a System User with ads_management and is a
+    | credential of the same weight as PAYSTACK_SECRET_KEY — .env only, never
+    | Platform settings, because settings are readable from the admin panel.
+    |
+    | Leave either blank and nothing at all happens: no pixel script, no
+    | third-party request, no cookie, no job. Reporting is opt-in.
+    |
+    | 'test_event_code' comes from the "Test events" tab and makes events show
+    | up there instead of counting. Set it while you are proving the plumbing
+    | works, then take it out — events sent with a test code do not optimise
+    | anything.
+    |
+    | 'version' is the Graph API version in the endpoint URL. Meta retires
+    | versions roughly two years after release, and a retired one answers with
+    | an error rather than a redirect, so this is a knob and not a constant:
+    | if `php artisan nvn:meta-check` reports an unsupported version, read the
+    | current one off the Conversions API tab in Events Manager and set
+    | META_API_VERSION.
+    |
+    | 'max_value_ngn' is a sanity ceiling, in whole naira. payments.amount is
+    | kobo and Meta wants naira, so a missed division reports a ₦45,000 sale as
+    | ₦4,500,000 and teaches the optimiser to chase a hundredfold fiction.
+    | Nothing above this is sent, and the job says loudly why.
+    */
+    'meta' => [
+        'dataset_id'      => env('META_DATASET_ID', ''),
+        'access_token'    => env('META_CAPI_TOKEN', ''),
+        'test_event_code' => env('META_TEST_EVENT_CODE', ''),
+        'version'         => env('META_API_VERSION', 'v23.0'),
+        'max_value_ngn'   => (int) env('META_MAX_VALUE_NGN', 2000000),
+    ],
+
 ];

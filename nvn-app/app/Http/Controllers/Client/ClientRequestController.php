@@ -10,6 +10,7 @@ use App\Models\RequestDocument;
 use App\Notifications\Admin\RequestAwaitingPaymentNotification;
 use App\Support\AdminAlert;
 use App\Support\AuditLogger;
+use App\Support\MetaAttribution;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +60,12 @@ class ClientRequestController extends Controller
                     'email'      => $data['email'],
                     'phone'      => $data['phone'],
                 ],
+                // The only moment an ad click can be recorded. Payment clears
+                // in a webhook or, for a bank transfer, in an admin's hands
+                // days later, and neither has a browser to read cookies from.
+                // Empty for everyone who did not arrive on an advert, which is
+                // most people. See App\Support\MetaAttribution.
+                'attribution' => MetaAttribution::capture($request) ?: null,
             ]);
 
             // Primary document

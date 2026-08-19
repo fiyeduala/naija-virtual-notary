@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Client;
 
 use App\Enums\RequestStatus;
 use App\Http\Controllers\Controller;
+use App\Jobs\ReportEventToMeta;
 use App\Models\NotarizationRequest;
 use App\Models\Payment;
 use App\Services\PaystackService;
 use App\Services\RequestFulfillmentService;
+use App\Support\MetaAttribution;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -43,7 +45,20 @@ class RequestPaymentController extends Controller
         $amount = $request->feeMinor();
         $reference = $this->paystack->reference('req');
 
-        Payment::create([
+        // A second sighting of the same browser, taken at the last moment it is
+        // in front of us. Meta matches partly on IP and user agent, so the
+        // closer to the payment these are read the better the event matches —
+        // and the click id itself is kept from whichever sighting saw it first.
+        $attribution = MetaAttribution::merge(
+            $request->attribution,
+            MetaAttribution::capture(request()),
+        );
+
+        if ($attribution !== []) {
+            $request->update(['attribution' => $attribution]);
+        }
+
+        $payment = Payment::create([
             'request_id'         => $request->id,
             'user_id'            => Auth::id(),
             'type'               => 'request_fee',
@@ -51,6 +66,10 @@ class RequestPaymentController extends Controller
             'currency'           => $request->currency,
             'paystack_reference' => $reference,
             'status'             => 'pending',
+            // On the payment as well as on the request, because a client can
+            // start checkout on their phone and finish on a laptop; the row
+            // that clears should carry the browser that opened it.
+            'meta'               => $attribution !== [] ? ['fb' => $attribution] : null,
         ]);
 
         // Mark the request submitted (intake complete, awaiting payment).
@@ -70,6 +89,14 @@ class RequestPaymentController extends Controller
         if (! $init['authorization_url']) {
             return back()->withErrors(['payment' => 'Could not start payment. Please try again.']);
         }
+
+        // Reported as well as the purchase, and for a specific reason: Meta's
+        // optimiser needs roughly fifty conversions an ad set a week before it
+        // stops guessing, and a notary platform will take a long time to pay
+        // out fifty notarizations in seven days. Reaching checkout happens far
+        // more often, so it is the signal worth optimising towards; the
+        // purchase remains the one to judge the spend on.
+        ReportEventToMeta::dispatch($payment->id, 'InitiateCheckout');
 
         return redirect()->away($init['authorization_url']);
     }

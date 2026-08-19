@@ -46,6 +46,7 @@
         }
         .aside a.aside-btn:hover { background:var(--bg); }
     </style>
+    @include('partials.meta-pixel')
 </head>
 <body>
     <div class="wrap">

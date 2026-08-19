@@ -319,6 +319,7 @@
         .sticky-bar button:hover { background: rgba(0,0,0,.12); }
     </style>
     @stack('styles')
+    @include('partials.meta-pixel')
 </head>
 <body>
 

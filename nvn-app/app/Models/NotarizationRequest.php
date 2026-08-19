@@ -28,6 +28,7 @@ class NotarizationRequest extends Model
         return [
             'status'              => RequestStatus::class,
             'intake_data'         => 'array',
+            'attribution'         => 'array',
             'delivery_address'    => 'array',
             'hard_copy_requested' => 'boolean',
             'was_fallback'        => 'boolean',
