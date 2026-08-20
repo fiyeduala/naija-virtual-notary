@@ -39,6 +39,7 @@ class PlatformSettingsPage extends Page implements HasForms
             'site_logo'               => \App\Support\Branding::path('site_logo'),
             'site_icon'               => \App\Support\Branding::path('site_icon'),
             'email_rate_per_minute'   => \App\Support\Settings::int('email_rate_per_minute', 30),
+            'asset_guide_url'         => \App\Support\Settings::string('asset_guide_url', ''),
             'tawk_property_id'        => \App\Support\Settings::string('tawk_property_id', (string) config('nvn.tawk.property_id', '')),
             'tawk_widget_id'          => \App\Support\Settings::string('tawk_widget_id', (string) config('nvn.tawk.widget_id', 'default')),
             'system_services'         => $systemProfile
@@ -75,6 +76,55 @@ class PlatformSettingsPage extends Page implements HasForms
                             ->minValue(0)
                             ->required(),
                     ]),
+
+                // ── Partner asset guide ──────────────────────────────────
+                Forms\Components\Section::make('Guide: getting an e-signature, stamp and seal')
+                    ->description('Most partners stall at the upload step because they do not yet have the '
+                        . 'files, not because the form is hard. A link here puts the instructions beside '
+                        . 'the form that needs them. It opens in a new tab, so nobody loses a half-filled '
+                        . 'application by going to read it. Leave it blank and no button is shown.')
+                    ->schema([
+                        // The guide is normally an article we published
+                        // ourselves, so offer the list rather than making
+                        // someone go and copy a URL out of another tab. This
+                        // field only fills in the one below; it is not stored.
+                        Forms\Components\Select::make('asset_guide_post')
+                            ->label('Pick a published article')
+                            ->placeholder('Choose one of your blog posts…')
+                            ->options(fn () => \App\Models\Post::published()
+                                ->orderByDesc('published_at')
+                                ->pluck('title', 'slug')
+                                ->toArray())
+                            ->searchable()
+                            ->dehydrated(false)
+                            ->live()
+                            ->afterStateUpdated(function (?string $state, Forms\Set $set) {
+                                if ($state) {
+                                    $set('asset_guide_url', route('blog.show', $state));
+                                }
+                            }),
+
+                        Forms\Components\TextInput::make('asset_guide_url')
+                            ->label('Guide link')
+                            ->helperText('Or paste any address — it does not have to be one of our own '
+                                . 'articles. Only http:// and https:// links are used; anything else is '
+                                . 'ignored and the button stays hidden.')
+                            ->url()
+                            ->live(onBlur: true)
+                            ->maxLength(500),
+
+                        Forms\Components\Placeholder::make('asset_guide_status')
+                            ->label('Status')
+                            ->columnSpanFull()
+                            ->content(function (Forms\Get $get) {
+                                $url = trim((string) $get('asset_guide_url'));
+
+                                return $url === ''
+                                    ? 'Off — partners see no guide button on the upload form.'
+                                    : 'Partners see a "How do I get these?" button linking to ' . $url;
+                            }),
+                    ])->columns(2),
+
 
                 // ── Commission & fallback ────────────────────────────────
                 Forms\Components\Section::make('Commission & fallback')
@@ -294,6 +344,11 @@ class PlatformSettingsPage extends Page implements HasForms
         // its text name rather than to whatever was uploaded before.
         PlatformSetting::set('site_logo', static::uploadedPath($data['site_logo'] ?? null), 'string');
         PlatformSetting::set('site_icon', static::uploadedPath($data['site_icon'] ?? null), 'string');
+
+        // Stored as typed; Settings::assetGuideUrl() is what decides whether it
+        // is safe to put in an href, so a mistake here shows as a missing
+        // button rather than as a link that does something unexpected.
+        PlatformSetting::set('asset_guide_url', trim((string) ($data['asset_guide_url'] ?? '')), 'string');
 
         // Stored bare even if a full <script> block was pasted and the extractor
         // did not recognise it: a property ID that is not an ID simply produces

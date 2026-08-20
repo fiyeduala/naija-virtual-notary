@@ -83,6 +83,27 @@ class Settings
         return static::tawk()[0] !== '';
     }
 
+    /**
+     * Where partners are sent to learn how to obtain an e-signature, stamp and
+     * seal. Blank means the button is simply not drawn.
+     *
+     * Filtered to http(s) here rather than at the settings page, because this
+     * value is written straight into an href and a scheme like javascript:
+     * would run in the partner's browser, not the admin's. A relative path is
+     * allowed through — that is the ordinary case, since the guide is normally
+     * an article on our own blog.
+     */
+    public static function assetGuideUrl(): string
+    {
+        $url = static::string('asset_guide_url', '');
+
+        if ($url === '' || str_starts_with($url, '/')) {
+            return $url;
+        }
+
+        return preg_match('#^https?://#i', $url) === 1 ? $url : '';
+    }
+
     /** Drop the memo — used by the settings page right after a save. */
     public static function flush(): void
     {

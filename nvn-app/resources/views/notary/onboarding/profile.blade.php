@@ -33,7 +33,25 @@
     {{-- Assets --}}
     <form method="POST" action="{{ route('notary.profile.assets') }}" enctype="multipart/form-data" class="card">
         @csrf
-        <h2 style="margin-bottom:18px;">E-signature &amp; identity</h2>
+        @php $guide = \App\Support\Settings::assetGuideUrl(); @endphp
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px;">
+            <h2 style="margin:0;">E-signature &amp; identity</h2>
+            {{-- target=_blank on purpose: this form has three file pickers and a
+                 typed SCN in it, and navigating away in the same tab throws all
+                 of that on the floor. Set the link under Platform settings. --}}
+            @if ($guide)
+                <a href="{{ $guide }}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+                    <x-heroicon-o-book-open style="width:15px;height:15px;"/>
+                    How do I get these?
+                </a>
+            @endif
+        </div>
+        @if ($guide)
+            <p class="text-sm muted" style="margin:-8px 0 18px;">
+                Do not have your e-signature, stamp or seal yet? The guide opens in a new tab &mdash;
+                nothing you have filled in here is lost.
+            </p>
+        @endif
         <div class="grid-2">
             <div>
                 <label for="initials">Initials (typed)</label>
