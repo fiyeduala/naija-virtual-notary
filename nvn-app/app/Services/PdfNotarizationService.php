@@ -154,9 +154,8 @@ class PdfNotarizationService
         }
 
         // Embed metadata
-        $notaryName = $request->notary?->user?->full_name ?? 'Naija Virtual Notary';
         $pdf->SetTitle('Notarized · ' . $request->reference);
-        $pdf->SetAuthor($notaryName);
+        $pdf->SetAuthor($this->sealAuthor($request, $placements));
         $pdf->SetSubject('Notarized via Naija Virtual Notary on ' . now()->toDateTimeString());
 
         // Write to a temp file, then store on the private disk
@@ -189,6 +188,45 @@ class PdfNotarizationService
             'file_type'          => 'final_notarized',
             'is_final_notarized' => true,
         ]);
+    }
+
+    /**
+     * Whose marks are actually on this page, for the PDF's Author field.
+     *
+     * Read off the placements rather than off notary_id. Those two used to be
+     * the same answer and no longer always are: the admin desk may seal a
+     * partner's job with the platform's own signature, stamp and seal when the
+     * partner's are wrong. Naming the partner on a document carrying the
+     * platform's seal would be a worse record than naming neither — anyone
+     * checking the file would find the metadata and the visible marks
+     * contradicting each other, with nothing to say which was true.
+     *
+     * notary_id is untouched by any of this. The notary of record is still the
+     * one the client booked and paid; this says only whose marks were pressed.
+     *
+     * @param  Collection<int, Collection<int, \App\Models\DocumentPlacement>>  $placements  keyed by page
+     */
+    private function sealAuthor(NotarizationRequest $request, Collection $placements): string
+    {
+        $fallback = $request->notary?->user?->full_name ?? 'Naija Virtual Notary';
+
+        $assetIds = $placements->flatten(1)->pluck('asset_id')->filter()->unique();
+
+        if ($assetIds->isEmpty()) {
+            return $fallback; // text-only placements name nobody
+        }
+
+        $names = \App\Models\NotaryAsset::whereIn('id', $assetIds)
+            ->with('notaryProfile.user')
+            ->get()
+            ->map(fn ($asset) => $asset->notaryProfile?->is_system_native
+                ? 'Naija Virtual Notary'
+                : $asset->notaryProfile?->user?->full_name)
+            ->filter()
+            ->unique()
+            ->values();
+
+        return $names->isEmpty() ? $fallback : $names->join(', ', ' and ');
     }
 
     /**

@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class NotarizeController extends Controller
@@ -34,12 +35,27 @@ class NotarizeController extends Controller
 
         $ext = strtolower(pathinfo($document->original_filename ?? $document->file_url, PATHINFO_EXTENSION));
 
+        $assetSets = $this->availableAssetSets($request);
+
+        // Worth a line on the record even before anything is placed: a paid job
+        // whose notary cannot seal is a stuck job, and this is the moment it was
+        // found. The ordinary desk substitution is not logged here — it is
+        // offered on every partner request now, so it would say nothing; that
+        // one is recorded when marks are actually saved.
+        if ($request->notary && ! $request->notary->canSeal()) {
+            AuditLogger::record('notarize.platform_seal_offered', 'notarization_request', $request->id, [
+                'assigned_notary_id' => $request->notary->id,
+                'missing'            => $this->missingMarks($request->notary),
+                'offered'            => collect($assetSets)->contains(fn (array $s) => $s['substitute']),
+            ], Auth::id());
+        }
+
         return view('session.notarize', [
             'request'    => $request,
             'documents'  => $documents,
             'document'   => $document,
             'fileExt'    => $ext,
-            'assetSets'  => $this->availableAssetSets($request),
+            'assetSets'  => $assetSets,
             'placements' => $document->placements()->get(),
             // Which of the others are still bare, so the editor can say so
             // before the notary reaches finalize and is turned back.
@@ -77,6 +93,11 @@ class NotarizeController extends Controller
         $this->authorizeNotarySide($request);
         abort_unless($asset->file_url, 404);
 
+        // Being allowed on this request is not the same as being allowed at this
+        // notary's marks. Without this, any id in the URL streamed any notary's
+        // signature to anyone who could open one request.
+        abort_unless(in_array($asset->id, $this->allowedAssetIds($request), true), 404);
+
         return Storage::disk('private')->response($asset->file_url);
     }
 
@@ -88,13 +109,17 @@ class NotarizeController extends Controller
         $data = $http->validate([
             'placements'              => ['present', 'array'],
             'placements.*.type'       => ['required', 'in:asset,text'],
-            'placements.*.asset_id'   => ['nullable', 'exists:notary_assets,id'],
+            // Scoped to the sets this operator was offered, not to the assets
+            // table — see allowedAssetIds().
+            'placements.*.asset_id'   => ['nullable', Rule::in($this->allowedAssetIds($request))],
             'placements.*.text_value' => ['nullable', 'string', 'max:500'],
             'placements.*.page'       => ['required', 'integer', 'min:1'],
             'placements.*.x'          => ['required', 'numeric', 'between:0,1'],
             'placements.*.y'          => ['required', 'numeric', 'between:0,1'],
             'placements.*.width'      => ['nullable', 'numeric', 'between:0,1'],
             'placements.*.height'     => ['nullable', 'numeric', 'between:0,1'],
+        ], [
+            'placements.*.asset_id.in' => 'That signature, stamp or seal is not one you may place on this document.',
         ]);
 
         $document = $this->currentDocument($request);
@@ -122,6 +147,8 @@ class NotarizeController extends Controller
             'document_id' => $document->id,
             'count'       => count($data['placements']),
         ], Auth::id());
+
+        $this->recordPlatformSealUse($request, $document, $data['placements']);
 
         return response()->json([
             'saved'   => count($data['placements']),
@@ -263,29 +290,26 @@ class NotarizeController extends Controller
     /**
      * Which asset sets may be placed on this document.
      *
-     * One rule, whoever is at the keyboard: the document carries the seal of the
-     * notary the client selected. The client chose them, paid their price, and
-     * the certificate names them — so when the platform notarizes on a partner's
-     * behalf it does it under that partner's signature, stamp and seal, not its
-     * own. The platform's own seal appears only when the platform's notary is
-     * the one the client selected, and it comes through this same branch because
-     * notary_id already points at the system-native profile.
+     * The default is unchanged and is still the rule for partner notaries: the
+     * document carries the seal of the notary the client selected. The client
+     * chose them, paid their price, and the record names them — so a partner at
+     * this keyboard sees exactly one set, their own, and there is no way for one
+     * notary to reach another's marks.
      *
-     * The one exception is a safety valve: if the assigned notary cannot seal —
-     * signature, stamp or seal missing, or the file behind one of them gone —
-     * there is nothing complete to place and the job cannot be finished, so the
-     * system set is offered instead, clearly labelled and recorded, because
-     * using it changes whose seal is on the client's document.
+     * The admin desk is the exception, and now always has the platform's own
+     * marks available as a second, clearly-labelled set. It used to appear only
+     * when the assigned notary could not seal at all — which caught the notary
+     * with a missing stamp and missed the worse case: a notary whose three marks
+     * are all present and all wrong. Nothing in the database can tell those
+     * apart, because "wrong" is a judgement about the image itself; only a human
+     * looking at it knows. So the desk gets the choice and the record says which
+     * was taken, rather than the system guessing and being unable to be
+     * overruled. This is the option to reach for when a partner has uploaded the
+     * wrong file, or their marks cannot lawfully go on this particular document.
      *
-     * The valve used to open only when the notary had no assets *at all*, which
-     * missed the case it existed for: a partial set is worse than an empty one,
-     * because it goes on the document and looks finished. It is now the same
-     * question asked when a notary is listed — NotaryProfile::canSeal().
-     *
-     * This should not fire in normal operation: nothing can be listed or booked
-     * without those three marks on file. It is here for what happens *after*
-     * listing — an asset deleted, or a file that did not survive a host move —
-     * on a job the client has already paid for.
+     * Whichever set is used goes on the document *and* into the sealed PDF's
+     * authorship — see PdfNotarizationService::sealAuthor(). notary_id is not
+     * touched: the notary of record is still whoever the client booked.
      */
     private function availableAssetSets(NotarizationRequest $request): array
     {
@@ -297,36 +321,107 @@ class NotarizeController extends Controller
 
         if ($assigned && $assigned->canSeal()) {
             $sets[] = [
-                'label'  => $assigned->is_system_native
+                'label'      => $assigned->is_system_native
                     ? 'Naija Virtual Notary (platform seal)'
                     : $assigned->user->full_name . ' — assigned notary',
-                'assets' => $assigned->assets,
+                'note'       => null,
+                'assets'     => $assigned->assets,
+                'substitute' => false,
             ];
         }
 
-        $canUseSystemSeal = $user->isAdmin() || $user->id === $request->handled_by;
+        // Only the desk may substitute one notary's marks for another's, and
+        // there is nothing to substitute when the platform's notary is already
+        // the notary of record — that set is the one above.
+        $atTheDesk = $user->isAdmin() || $user->id === $request->handled_by;
 
-        if ($canUseSystemSeal && $sets === []) {
-            $systemNative = NotaryProfile::systemNative()->with('assets', 'user')->first();
-
-            if ($systemNative && $systemNative->canSeal()) {
-                $sets[] = [
-                    'label'  => 'Naija Virtual Notary (platform seal — assigned notary cannot seal: '
-                        . $this->missingMarks($assigned) . ' missing)',
-                    'assets' => $systemNative->assets,
-                ];
-
-                // Substituting one notary's seal for another's is the kind of
-                // thing that has to be answerable months later, so it is written
-                // down when the option is raised rather than only if it is used.
-                AuditLogger::record('notarize.platform_seal_offered', 'notarization_request', $request->id, [
-                    'assigned_notary_id' => $assigned?->id,
-                    'missing'            => $this->missingMarks($assigned),
-                ]);
-            }
+        if (! $atTheDesk || $assigned?->is_system_native) {
+            return $sets;
         }
 
+        $systemNative = NotaryProfile::systemNative()->with('assets', 'user')->first();
+
+        if (! $systemNative || ! $systemNative->canSeal()) {
+            return $sets;
+        }
+
+        $sets[] = [
+            'label'      => 'Naija Virtual Notary (platform seal)',
+            'note'       => $sets === []
+                ? 'The assigned notary cannot seal — ' . $this->missingMarks($assigned)
+                    . ' missing. These marks are the only way to finish this job.'
+                : 'Substitutes the platform’s marks for the assigned notary’s. Use when '
+                    . 'theirs are wrong or cannot go on this document. The choice is recorded.',
+            'assets'     => $systemNative->assets,
+            'substitute' => true,
+        ];
+
         return $sets;
+    }
+
+    /**
+     * Every asset id the person at this keyboard is allowed to place.
+     *
+     * The palette in the editor is not the boundary — it is only the part of the
+     * boundary that is drawn. asset_id arrives from the browser, and validating
+     * it as `exists:notary_assets,id` accepted *any* notary's signature: a
+     * partner could have placed a colleague's seal, or streamed one, by editing
+     * a number in the request. The answer is the same list the editor was built
+     * from, asked again on the way back in.
+     *
+     * @return list<int>
+     */
+    private function allowedAssetIds(NotarizationRequest $request): array
+    {
+        return collect($this->availableAssetSets($request))
+            ->flatMap(fn (array $set) => $set['assets']->pluck('id'))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Note when the platform's marks — not the assigned notary's — were placed.
+     *
+     * Recorded on save rather than when the option is offered. The desk now sees
+     * the platform set on every partner request it opens, so "offered" is the
+     * ordinary case and says nothing; "used" is the answer to the question that
+     * gets asked months later, which is whose seal is actually on the client's
+     * document and who put it there.
+     */
+    private function recordPlatformSealUse(
+        NotarizationRequest $request,
+        \App\Models\RequestDocument $document,
+        array $placements,
+    ): void {
+        $assigned = $request->notary;
+
+        if (! $assigned || $assigned->is_system_native) {
+            return; // the platform's marks are the assigned notary's marks
+        }
+
+        $assetIds = collect($placements)->pluck('asset_id')->filter()->unique();
+
+        if ($assetIds->isEmpty()) {
+            return;
+        }
+
+        $systemNative = NotaryProfile::systemNative()->first();
+
+        $substituted = $systemNative && NotaryAsset::whereIn('id', $assetIds)
+            ->where('notary_profile_id', $systemNative->id)
+            ->exists();
+
+        if (! $substituted) {
+            return;
+        }
+
+        AuditLogger::record('notarize.platform_seal_used', 'notarization_request', $request->id, [
+            'document_id'        => $document->id,
+            'assigned_notary_id' => $assigned->id,
+            'assigned_can_seal'  => $assigned->canSeal(),
+            'missing'            => $assigned->canSeal() ? null : $this->missingMarks($assigned),
+        ], Auth::id());
     }
 
     /** Which of the three marks the assigned notary is short of, in plain words. */

@@ -214,7 +214,18 @@
             <span class="text-sm muted" style="font-weight:600; margin-right:4px;">Tools:</span>
 
             @foreach ($assetSets as $set)
-                <span class="text-sm muted" style="width:100%; margin: 4px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;">{{ $set['label'] }}</span>
+                <span class="text-sm muted" style="width:100%; margin: 4px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;">
+                    {{ $set['label'] }}
+                    @if ($set['substitute'] ?? false)
+                        <span style="text-transform:none; letter-spacing:0; color:#b45309; font-weight:600;">· substitute</span>
+                    @endif
+                </span>
+                @if ($set['note'] ?? null)
+                    {{-- Said here rather than in the label, because the person
+                         reading it is choosing between two seals and needs the
+                         reason, not just the name. --}}
+                    <span class="text-sm" style="width:100%; margin:0 0 4px; font-size:11px; color:#b45309;">{{ $set['note'] }}</span>
+                @endif
                 @foreach ($set['assets'] as $asset)
                     @if ($asset->type === 'initials')
                         <button type="button" class="btn btn-ghost btn-sm tool"
