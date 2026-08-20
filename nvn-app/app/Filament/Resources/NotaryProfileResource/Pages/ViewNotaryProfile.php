@@ -14,6 +14,7 @@ use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
@@ -560,12 +561,13 @@ class ViewNotaryProfile extends ViewRecord
                 ->schema([
                     TextEntry::make('bankDetails.bank_name')->label('Bank')->placeholder('—'),
 
-                    // Never render the decrypted number in full — the last four
-                    // digits are enough to tell two accounts apart.
-                    TextEntry::make('bankDetails.account_number')
+                    // Masked until asked for. Most payouts are made by hand, so
+                    // the full number has to be reachable from here — see the
+                    // partial for why it is a click and not just printed.
+                    ViewEntry::make('account_number')
                         ->label('Account number')
-                        ->formatStateUsing(fn ($record) => $record->bankDetails?->maskedAccountNumber() ?? '—')
-                        ->placeholder('—'),
+                        ->view('filament.revealable-account')
+                        ->viewData([]),
 
                     TextEntry::make('bankDetails.account_name')->label('Name given')->placeholder('—'),
 

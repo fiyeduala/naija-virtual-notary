@@ -381,10 +381,24 @@
             <x-heroicon-o-x-circle style="width:20px;height:20px;flex-shrink:0;"/>
             Your application was not approved. Please contact support for more information.
         </div>
+        @elseif($profile->isAwaitingListingReview())
+        <div class="status-banner warning">
+            <x-heroicon-o-clock style="width:20px;height:20px;flex-shrink:0;"/>
+            Your profile is with us for review. We look at every notary's signature, stamp and seal
+            by hand before listing them, so this takes a little longer than the rest — usually a day.
+        </div>
         @elseif(! $profile->public_listing_enabled)
         <div class="status-banner warning">
             <x-heroicon-o-eye-slash style="width:20px;height:20px;flex-shrink:0;"/>
-            Your profile is approved but not yet listed publicly. <a href="{{ route('notary.profile.edit') }}">Complete your profile to go live &rarr;</a>
+            @if($profile->listing_review_notes)
+                {{-- The reason, on the page they land on, not only in an email
+                     they may have deleted. A notary who cannot remember what was
+                     wrong resubmits the same file. --}}
+                We could not list you yet: {{ $profile->listing_review_notes }}
+                <a href="{{ route('notary.profile.edit') }}">Fix it and send it back &rarr;</a>
+            @else
+                Your profile is approved but not yet listed publicly. <a href="{{ route('notary.profile.edit') }}">Complete your profile and ask to be listed &rarr;</a>
+            @endif
         </div>
         @else
         <div class="status-banner success">

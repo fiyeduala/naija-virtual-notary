@@ -43,7 +43,9 @@ Route::middleware(['auth', 'verified.otp', 'role:notary'])->group(function () {
     Route::post('/notary/profile/assets', [NotaryProfileController::class, 'saveAssets'])->name('notary.profile.assets');
     Route::post('/notary/profile/bank', [NotaryProfileController::class, 'saveBank'])->name('notary.profile.bank');
     Route::post('/notary/profile/service', [NotaryProfileController::class, 'saveService'])->name('notary.profile.service');
-    Route::post('/notary/profile/go-live', [NotaryProfileController::class, 'goLive'])->name('notary.profile.golive');
+    // Named golive still, because the name is what every blade and redirect
+    // holds; what it does behind that name is now ask, not do.
+    Route::post('/notary/profile/go-live', [NotaryProfileController::class, 'requestListing'])->name('notary.profile.golive');
 });
 
 // Admin review

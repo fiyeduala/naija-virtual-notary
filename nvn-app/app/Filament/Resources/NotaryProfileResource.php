@@ -6,6 +6,7 @@ use App\Filament\Resources\NotaryProfileResource\Pages;
 use App\Models\NotaryProfile;
 use App\Notifications\NotaryApplicationReviewed;
 use App\Notifications\NotaryAssetsReminder;
+use App\Notifications\NotaryListingReviewed;
 use App\Services\OfflinePaymentService;
 use App\Support\AuditLogger;
 use Filament\Forms;
@@ -27,8 +28,12 @@ class NotaryProfileResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
+        // Both queues, counted together: an application waiting to be approved
+        // and a listing waiting to be looked at are the same thing to the
+        // partner sitting on the other end of them — nothing happening.
         $count = static::getModel()::where('verification_status', 'pending')
-            ->whereNotNull('onboarding_fee_paid_at')->count();
+            ->whereNotNull('onboarding_fee_paid_at')->count()
+            + static::getModel()::query()->awaitingListingReview()->count();
 
         return $count ?: null;
     }
@@ -76,13 +81,42 @@ class NotaryProfileResource extends Resource
                 Tables\Columns\TextColumn::make('verification_status')->badge()->color(fn ($state) => match ($state) {
                     'approved' => 'success', 'pending' => 'warning', 'rejected' => 'danger', default => 'gray',
                 }),
-                Tables\Columns\IconColumn::make('public_listing_enabled')->label('Listed')->boolean(),
+                // Three states, not two. A boolean icon showed a notary who is
+                // waiting on a decision as identical to one who never asked —
+                // and the waiting one is the only one needing anything.
+                Tables\Columns\TextColumn::make('public_listing_enabled')
+                    ->label('Listed')
+                    ->badge()
+                    ->color(fn (NotaryProfile $r) => match (true) {
+                        $r->public_listing_enabled    => 'success',
+                        $r->isAwaitingListingReview() => 'warning',
+                        default                       => 'gray',
+                    })
+                    ->state(fn (NotaryProfile $r) => match (true) {
+                        $r->public_listing_enabled    => 'Listed',
+                        $r->isAwaitingListingReview() => 'Awaiting review',
+                        default                       => 'Not listed',
+                    }),
                 Tables\Columns\IconColumn::make('is_system_native')->label('System')->boolean(),
                 Tables\Columns\TextColumn::make('commission_rate')->label('Comm %')->suffix('%'),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('verification_status')
                     ->options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected', 'suspended' => 'Suspended']),
+
+                Tables\Filters\SelectFilter::make('listing')
+                    ->label('Listing')
+                    ->options([
+                        'awaiting' => 'Awaiting review',
+                        'listed'   => 'Listed',
+                        'not'      => 'Not listed',
+                    ])
+                    ->query(fn (Builder $query, array $data) => match ($data['value'] ?? null) {
+                        'awaiting' => $query->awaitingListingReview(),
+                        'listed'   => $query->where('public_listing_enabled', true),
+                        'not'      => $query->where('public_listing_enabled', false),
+                        default    => $query,
+                    }),
 
                 // The two lists an admin actually chases: who has already fallen
                 // off the marketplace, and who is about to.
@@ -225,17 +259,40 @@ class NotaryProfileResource extends Resource
                             ->success()
                             ->send();
                     }),
-                Tables\Actions\Action::make('toggleListing')
-                    ->label(fn (NotaryProfile $r) => $r->public_listing_enabled ? 'Unlist' : 'List')
+                // Listing is granted here and nowhere else. A notary can ask
+                // (NotaryProfileController::requestListing) but cannot let
+                // themselves in, because the only check code can run is whether
+                // three files exist — not whether the marks on them are real.
+                Tables\Actions\Action::make('listNotary')
+                    ->label('List')
                     ->icon('heroicon-o-eye')
-                    ->visible(fn (NotaryProfile $r) => $r->verification_status === 'approved')
+                    ->color('success')
+                    ->visible(fn (NotaryProfile $r) => $r->verification_status === 'approved'
+                        && ! $r->public_listing_enabled)
+                    ->modalHeading('Put this notary in the marketplace')
+                    ->modalDescription('Look at the three marks below before you decide. Once listed, '
+                        . 'clients can book them and whatever is on these images goes onto real documents.')
+                    ->modalWidth('2xl')
+                    ->modalSubmitActionLabel('List them')
+                    ->form(fn (NotaryProfile $r) => [
+                        Forms\Components\Placeholder::make('marks')
+                            ->label('Signature, stamp and seal')
+                            ->content(fn () => view('filament.notary-marks', ['profile' => $r->load('assets')]))
+                            ->columnSpanFull(),
+
+                        // A checkbox is not security; it is the half-second in
+                        // which somebody actually looks up at the images they
+                        // just scrolled past.
+                        Forms\Components\Checkbox::make('looked')
+                            ->label('I have looked at these images and they are this notary\'s genuine marks')
+                            ->accepted()
+                            ->required()
+                            ->columnSpanFull(),
+                    ])
                     ->action(function (NotaryProfile $r) {
                         // A notary with no seal on file cannot notarize anything —
                         // the client would book them and the session would dead-end.
-                        // Self-service listing already checks this
-                        // (NotaryProfileController::goLive); this is the same rule
-                        // for the admin, who can otherwise flip the switch freely.
-                        if (! $r->public_listing_enabled && ! static::hasSealingAssets($r)) {
+                        if (! static::hasSealingAssets($r)) {
                             Notification::make()
                                 ->title('Cannot list this notary')
                                 ->body('Their signature, stamp and seal must be on file first — use "Manage notarial assets".')
@@ -245,8 +302,96 @@ class NotaryProfileResource extends Resource
                             return;
                         }
 
-                        $r->update(['public_listing_enabled' => ! $r->public_listing_enabled]);
-                        AuditLogger::record('notary.listing_toggled', 'notary_profile', $r->id, ['listed' => $r->public_listing_enabled]);
+                        $r->update([
+                            'public_listing_enabled' => true,
+                            'listed_at'              => now(),
+                            'listing_requested_at'   => null,
+                            'listing_review_notes'   => null,
+                        ]);
+
+                        AuditLogger::record('notary.listed', 'notary_profile', $r->id, ['by_admin' => auth()->id()]);
+
+                        $r->user?->notify(new NotaryListingReviewed(true));
+
+                        Notification::make()
+                            ->title('Listed')
+                            ->body(($r->user?->full_name ?? 'This notary') . ' is now findable and bookable.')
+                            ->success()
+                            ->send();
+                    }),
+
+                // Declining is a separate action from unlisting on purpose: one
+                // answers a request, the other takes back something already
+                // given, and only the first should disappear once answered.
+                Tables\Actions\Action::make('declineListing')
+                    ->label('Decline listing')
+                    ->icon('heroicon-o-hand-raised')
+                    ->color('danger')
+                    ->visible(fn (NotaryProfile $r) => $r->isAwaitingListingReview())
+                    ->modalHeading('Decline this listing request')
+                    ->modalWidth('2xl')
+                    ->modalSubmitActionLabel('Decline and tell them')
+                    ->form(fn (NotaryProfile $r) => [
+                        Forms\Components\Placeholder::make('marks')
+                            ->label('What they sent')
+                            ->content(fn () => view('filament.notary-marks', ['profile' => $r->load('assets')]))
+                            ->columnSpanFull(),
+
+                        Textarea::make('notes')
+                            ->label('What they need to fix')
+                            ->required()
+                            ->rows(3)
+                            ->helperText('Emailed to them word for word. Name the mark and what is wrong '
+                                . 'with it — "your seal is a photo of a stamp pad, we need the seal itself" '
+                                . 'gets fixed; "assets rejected" gets a reply asking what you meant.')
+                            ->columnSpanFull(),
+                    ])
+                    ->action(function (NotaryProfile $r, array $data) {
+                        $r->update([
+                            'listing_requested_at' => null,
+                            'listing_review_notes' => $data['notes'],
+                        ]);
+
+                        AuditLogger::record('notary.listing_declined', 'notary_profile', $r->id, [
+                            'notes' => $data['notes'],
+                        ]);
+
+                        $r->user?->notify(new NotaryListingReviewed(false, $data['notes']));
+
+                        Notification::make()->title('Declined — they have been told why')->success()->send();
+                    }),
+
+                Tables\Actions\Action::make('unlist')
+                    ->label('Unlist')
+                    ->icon('heroicon-o-eye-slash')
+                    ->color('danger')
+                    ->visible(fn (NotaryProfile $r) => $r->public_listing_enabled)
+                    ->modalHeading('Take this notary out of the marketplace')
+                    ->modalDescription('They stop appearing to clients immediately. Work already booked '
+                        . 'is untouched — nothing in flight looks at the listing.')
+                    ->modalSubmitActionLabel('Unlist')
+                    ->form([
+                        Textarea::make('notes')
+                            ->label('Reason (emailed to them)')
+                            ->rows(3)
+                            ->helperText('Leave empty to unlist quietly, without an email.'),
+                    ])
+                    ->action(function (NotaryProfile $r, array $data) {
+                        $r->update([
+                            'public_listing_enabled' => false,
+                            'listing_requested_at'   => null,
+                            'listing_review_notes'   => $data['notes'] ?: null,
+                        ]);
+
+                        AuditLogger::record('notary.unlisted', 'notary_profile', $r->id, [
+                            'notes' => $data['notes'] ?: null,
+                        ]);
+
+                        if (filled($data['notes'])) {
+                            $r->user?->notify(new NotaryListingReviewed(false, $data['notes']));
+                        }
+
+                        Notification::make()->title('Unlisted')->success()->send();
                     }),
             ])
             ->defaultSort('created_at', 'desc');

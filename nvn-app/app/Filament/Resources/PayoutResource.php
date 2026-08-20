@@ -12,6 +12,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\HtmlString;
 
 class PayoutResource extends Resource
@@ -44,19 +45,24 @@ class PayoutResource extends Resource
      *
      * Shown on the manual-settlement form because that is the moment the admin
      * is about to type an account number into their bank app, and having it in
-     * front of them beats a second tab open on the notary's profile.
+     * front of them beats a second tab open on the notary's profile. The number
+     * itself sits behind a Show button — this form is the reason that button
+     * exists, so it is the one place the digits are genuinely wanted.
+     *
+     * Returns markup rather than a string: a Placeholder renders an Htmlable,
+     * and there is no way to put a working button inside a plain one.
      */
-    public static function accountLine(Payout $payout): string
+    public static function accountLine(Payout $payout): HtmlString|View
     {
         $bank = $payout->notaryProfile?->bankDetails;
 
         if (! $bank) {
-            return 'No payout account on file — ask them to add one before paying.';
+            return new HtmlString('No payout account on file — ask them to add one before paying.');
         }
 
-        return $bank->bank_name . ' · ' . $bank->maskedAccountNumber()
-            . ' · ' . ($bank->resolved_account_name ?: $bank->account_name)
-            . ($bank->isVerified() ? ' (verified with the bank)' : ' (not verified — check it first)');
+        return view('filament.payout-account-line', [
+            'bank' => $bank,
+        ]);
     }
 
     public static function table(Table $table): Table

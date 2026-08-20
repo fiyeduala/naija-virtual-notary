@@ -76,7 +76,8 @@
         @elseif ($status === 'approved')
             <div class="alert" style="background:var(--success-bg); border:1px solid var(--success-line); color:var(--success); display:flex; align-items:flex-start; gap:10px; margin-bottom:16px;">
                 <x-heroicon-o-check-circle style="width:16px;height:16px;flex-shrink:0;margin-top:2px;"/>
-                <span>Your application has been approved! Complete your profile to go live in the marketplace.</span>
+                <span>Your application has been approved! Complete your profile and send it to us —
+                    we check every notary's signature, stamp and seal by hand before listing them.</span>
             </div>
             <a class="btn btn-block" href="{{ route('notary.profile.edit') }}" style="justify-content:center;">
                 Complete your profile &rarr;

@@ -26,6 +26,8 @@ class NotaryProfile extends Model
             'onboarding_fee_paid_at' => 'datetime',
             'membership_expires_at'  => 'datetime',
             'membership_reminded_at' => 'datetime',
+            'listing_requested_at'   => 'datetime',
+            'listed_at'              => 'datetime',
             'approved_at'            => 'datetime',
             'commission_rate'        => 'integer',
         ];
@@ -100,6 +102,77 @@ class NotaryProfile extends Model
     public function scopeSystemNative($query)
     {
         return $query->where('is_system_native', true);
+    }
+
+    /** Notaries who have asked to be listed and are still waiting on an answer. */
+    public function scopeAwaitingListingReview($query)
+    {
+        return $query->whereNotNull('listing_requested_at')
+                     ->where('public_listing_enabled', false);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Listing
+    |--------------------------------------------------------------------------
+    |
+    | Being in the marketplace is granted by an admin, never taken. Completing a
+    | profile only earns the right to ask. See the migration that added these
+    | columns for the incident behind that rule.
+    */
+
+    /** Has this notary asked to be listed and not yet been answered? */
+    public function isAwaitingListingReview(): bool
+    {
+        return $this->listing_requested_at !== null && ! $this->public_listing_enabled;
+    }
+
+    /**
+     * Everything that must be true before a listing can even be asked for.
+     *
+     * Returns the reasons it cannot, in the order a notary would fix them, so
+     * the caller can say which one is in the way rather than "profile
+     * incomplete". Empty means ready to ask — not ready to appear.
+     *
+     * @return list<string>
+     */
+    public function listingBlockers(): array
+    {
+        $blockers = [];
+
+        if ($this->verification_status !== 'approved') {
+            $blockers[] = 'your application is still being reviewed';
+        }
+
+        // Signature, stamp and seal, each with a file behind it. Counting rows
+        // was not the same question: four rows can still be missing the seal.
+        if (! $this->canSeal()) {
+            $missing = $this->missingSealingAssets();
+
+            $blockers[] = 'we do not have your ' . (count($missing) > 1
+                ? implode(', ', array_slice($missing, 0, -1)) . ' and ' . end($missing)
+                : ($missing[0] ?? 'sealing marks'));
+        }
+
+        // A bank code, not merely a row: an account saved before the payout
+        // rework has a typed bank name that nothing can be transferred to.
+        // Verification itself is not required — it can fail for reasons that
+        // are not the notary's fault, and an admin can re-run it.
+        $bank = $this->relationLoaded('bankDetails') ? $this->bankDetails : $this->bankDetails()->first();
+
+        if ($bank?->bank_code === null) {
+            $blockers[] = 'your payout account is not set up';
+        }
+
+        $services = $this->relationLoaded('services')
+            ? $this->services->count()
+            : ($this->services_count ?? $this->services()->count());
+
+        if ($services < 1) {
+            $blockers[] = 'you have not priced a single service';
+        }
+
+        return $blockers;
     }
 
     /**

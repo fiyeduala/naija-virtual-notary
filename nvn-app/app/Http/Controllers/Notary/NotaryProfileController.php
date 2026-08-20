@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\NotaryAsset;
 use App\Models\NotaryBankDetail;
 use App\Models\NotaryService;
+use App\Notifications\Admin\NotaryAssetsUploaded;
+use App\Notifications\Admin\NotaryListingRequested;
 use App\Services\BankAccountService;
 use App\Services\PaystackService;
+use App\Support\AdminAlert;
 use App\Support\AuditLogger;
 use App\Support\Banks;
 use Illuminate\Http\RedirectResponse;
@@ -48,6 +51,10 @@ class NotaryProfileController extends Controller
 
         $profile = Auth::user()->notaryProfile;
 
+        // Asked before the upload overwrites it, because afterwards every
+        // notary looks like they always had a full set.
+        $replacement = $profile->canSeal();
+
         // SCN on the profile record
         if ($request->filled('scn')) {
             $profile->update(['scn' => $request->input('scn')]);
@@ -68,9 +75,21 @@ class NotaryProfileController extends Controller
             );
         }
 
-        AuditLogger::record('notary.assets_saved', 'notary_profile', $profile->id);
+        AuditLogger::record('notary.assets_saved', 'notary_profile', $profile->id, [
+            'replacement' => $replacement,
+        ]);
 
-        return back()->with('status', 'Notarial assets saved.');
+        // Tell the desk now rather than at the listing request. These images
+        // are the only part of a notary that no automated check can judge, and
+        // the sooner a person has seen them the smaller the blast radius when
+        // they are wrong.
+        AdminAlert::send(new NotaryAssetsUploaded($profile->fresh()->load('assets'), $replacement));
+
+        return back()->with(
+            'status',
+            'Notarial assets saved. We check every notary’s signature, stamp and seal by hand, '
+                . 'so please make sure these are the marks you actually notarize with.',
+        );
     }
 
     public function saveBank(Request $request, BankAccountService $accounts): RedirectResponse
@@ -137,33 +156,55 @@ class NotaryProfileController extends Controller
         return back()->with('status', 'Service added.');
     }
 
-    /** Once assets + bank + at least one service exist, list publicly. */
-    public function goLive(): RedirectResponse
+    /**
+     * Ask to be listed. It used to list you.
+     *
+     * A complete profile is now the price of admission to the queue, not to the
+     * marketplace. The reason is that completeness is the only thing code can
+     * check: every gate here asks whether three files exist, and none of them
+     * can ask whether the images on them are a real notary's real stamp and
+     * seal. One partner uploaded the wrong ones, listed himself, and a client
+     * booked a job nobody could finish — the images were wrong, so neither the
+     * partner nor the desk could put a valid mark on the document.
+     *
+     * So a person looks at them now. It costs a new partner a day; it costs a
+     * client who booked a bad listing far more than that.
+     */
+    public function requestListing(): RedirectResponse
     {
         $profile = Auth::user()->notaryProfile->loadCount('services')->load('bankDetails', 'assets');
 
-        // Signature, stamp and seal, each with a file behind it — the same test
-        // an admin's List toggle applies and the same one the editor applies
-        // when it decides whose seal to offer. Counting rows was not the same
-        // question: four rows can still be missing the seal.
-        $hasAssets = $profile->canSeal();
-        // A bank code, not merely a row: an account saved before the payout
-        // rework has a typed bank name that nothing can be transferred to.
-        // Verification itself is not required — it can fail for reasons that
-        // are not the notary's fault, and an admin can re-run it.
-        $hasBank   = $profile->bankDetails?->bank_code !== null;
-        $hasService = $profile->services_count > 0;
-
-        if (! ($hasAssets && $hasBank && $hasService)) {
+        if ($blockers = $profile->listingBlockers()) {
             return back()->withErrors([
-                'profile' => 'Complete your assets, bank details, and at least one service before going live.',
+                'profile' => 'Not quite ready — ' . implode('; ', $blockers) . '.',
             ]);
         }
 
-        $profile->update(['public_listing_enabled' => true]);
-        AuditLogger::record('notary.listed', 'notary_profile', $profile->id);
+        if ($profile->public_listing_enabled) {
+            return redirect()->route('notary.dashboard')
+                ->with('status', 'You are already listed in the marketplace.');
+        }
 
-        return redirect()->route('notary.dashboard')
-            ->with('status', 'Your profile is now live in the marketplace.');
+        // Asking twice is not an error — a notary who replaced a rejected seal
+        // has a real reason to ask again, and the alert should fire again so it
+        // lands in front of whoever declined it. Only the timestamp moves.
+        $alreadyWaiting = $profile->isAwaitingListingReview();
+
+        $profile->update([
+            'listing_requested_at' => now(),
+            'listing_review_notes' => null,
+        ]);
+
+        AuditLogger::record('notary.listing_requested', 'notary_profile', $profile->id, [
+            'resubmitted' => $alreadyWaiting,
+        ]);
+
+        AdminAlert::send(new NotaryListingRequested($profile));
+
+        return redirect()->route('notary.dashboard')->with(
+            'status',
+            'Sent for review. We check every notary’s signature, stamp and seal by hand before '
+                . 'putting them in front of clients — you will hear from us, usually within a day.',
+        );
     }
 }

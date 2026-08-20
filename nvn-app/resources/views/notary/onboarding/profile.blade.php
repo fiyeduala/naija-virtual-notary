@@ -8,11 +8,27 @@
             Back to dashboard
         </a>
         <h1>Complete your profile</h1>
-        <div class="sub">Add your notarial assets, bank details, and the services you offer — then go live in the marketplace</div>
+        <div class="sub">Add your notarial assets, bank details, and the services you offer — then send it to us to be listed</div>
     </div>
 </div>
 
 <div class="shell" style="padding-bottom:100px;">
+
+    @if (! $profile->public_listing_enabled && ! $profile->isAwaitingListingReview() && $profile->listing_review_notes)
+        {{-- Put the reason directly above the form that fixes it. An emailed
+             refusal and a form on a different page are two halves of the same
+             instruction, and notaries only ever have one of them open. --}}
+        {{-- .alert lives in the layout; .status-banner is the dashboard's own
+             and does not exist on this page. --}}
+        <div class="alert alert-error" style="display:flex; gap:10px; align-items:flex-start;">
+            <x-heroicon-o-exclamation-triangle style="width:18px;height:18px;flex-shrink:0;margin-top:1px;"/>
+            <span>
+                <strong>We could not list you yet.</strong>
+                {{ $profile->listing_review_notes }}
+                Upload a replacement below and send it back — there is no limit on how many times you can.
+            </span>
+        </div>
+    @endif
 
     {{-- Assets --}}
     <form method="POST" action="{{ route('notary.profile.assets') }}" enctype="multipart/form-data" class="card">
@@ -137,11 +153,24 @@
 
 </div>
 
-{{-- Sticky go-live bar --}}
+{{-- Sticky submit bar --}}
 <div class="sticky-bar">
-    <form method="POST" action="{{ route('notary.profile.golive') }}">
-        @csrf
-        <button type="submit">Go live in the marketplace &rarr;</button>
-    </form>
+    @if ($profile->public_listing_enabled)
+        <span class="text-sm" style="color:#15803d; font-weight:600;">
+            You are live in the marketplace.
+        </span>
+    @elseif ($profile->isAwaitingListingReview())
+        {{-- No button while it is with us. Pressing it again changes nothing
+             they can see, and a button that appears to do nothing is how a
+             notary concludes the site is broken and emails to ask. --}}
+        <span class="text-sm" style="color:#b45309; font-weight:600;">
+            Sent for review {{ $profile->listing_requested_at->diffForHumans() }} — we are checking your marks.
+        </span>
+    @else
+        <form method="POST" action="{{ route('notary.profile.golive') }}">
+            @csrf
+            <button type="submit">Send my profile for review &rarr;</button>
+        </form>
+    @endif
 </div>
 @endsection
