@@ -20,6 +20,39 @@
 
 <div class="shell">
 
+    {{-- Category query — the state of the request, so it goes above everything
+         else. A notary who scrolls past this and starts work is doing work that
+         cannot be sealed. --}}
+    @if ($request->isCategoryBlocked())
+    <div class="bank-state is-warn" style="margin-bottom:16px;">
+        @if ($request->hasOpenCategoryQuery())
+            <strong>Paused — waiting on the client to re-pick the category.</strong>
+            <span>
+                Raised {{ $request->category_query_at->diffForHumans() }}
+                by {{ $request->categoryQueriedBy?->full_name ?? 'the desk' }}:
+                &ldquo;{{ $request->category_query_reason }}&rdquo;
+                @if ($request->categorySuggestedService)
+                    Recommended instead: <strong>{{ $request->categorySuggestedService->service_type }}</strong>
+                    ({{ $request->categorySuggestedService->displayPrice($request->currency) }}).
+                @endif
+            </span>
+            <span>Their payment has not been touched. Nothing can be sealed until they answer.</span>
+            <form method="POST" action="{{ route('notary.requests.category.withdraw', $request) }}" style="margin-top:8px;">
+                @csrf
+                <button class="btn btn-ghost btn-sm" type="submit">Withdraw the query</button>
+            </form>
+        @else
+            <strong>Paused — {{ $request->displayBalance() }} outstanding after the category was corrected.</strong>
+            <span>
+                Now filed as {{ $request->service?->service_type }}.
+                The client has paid {{ \App\Models\NotarizationRequest::money($request->amountPaidMinor(), $request->currency) }}
+                of {{ $request->displayFee() }}. It comes back to you the moment the difference clears —
+                you will be notified.
+            </span>
+        @endif
+    </div>
+    @endif
+
     {{-- Details --}}
     <div class="card">
         <h2 style="margin-bottom:16px;">Details</h2>
@@ -143,6 +176,45 @@
             Joining the call lets you verify the client's ID live on camera.
             Skipping goes straight to the document editor — use this when you're satisfied the uploaded ID is adequate.
         </p>
+    </div>
+    @endif
+
+    {{-- Wrong category --}}
+    @if ($request->isPriced() && ! $request->hasOpenCategoryQuery() && in_array($request->status, \App\Enums\RequestStatus::active(), true))
+    <div class="card" style="margin-top:16px;">
+        <h2 style="margin-bottom:6px;">Wrong category?</h2>
+        <p class="text-sm muted" style="margin-bottom:16px;">
+            Clients pick a category before anyone has read the document, so they pick by guess.
+            If this is not {{ $request->service->service_type }}, send it back rather than notarizing it wrongly.
+            <strong style="color:var(--ink);">Nothing is refunded and nothing is cancelled</strong> — what they have
+            paid stays on this request, and they are asked only for the difference if the right category costs more.
+        </p>
+        <form method="POST" action="{{ route('notary.requests.category.query', $request) }}">
+            @csrf
+            <label for="cat-reason">What is wrong with it?</label>
+            <textarea id="cat-reason" name="reason" required style="min-height:80px;"
+                      placeholder="e.g. This is a deed of assignment, not an affidavit — it needs two witnesses and a different jurat."></textarea>
+            <p class="text-sm muted" style="margin:6px 0 16px;">The client sees this word for word, so write it to them.</p>
+
+            <label for="cat-service">What should it be? (optional)</label>
+            <select id="cat-service" name="service_id">
+                <option value="">Let the client decide</option>
+                @foreach ($services as $service)
+                    @continue($service->id === $request->service_id)
+                    <option value="{{ $service->id }}">
+                        {{ $service->service_type }} — {{ $service->displayPrice($request->currency) }}
+                    </option>
+                @endforeach
+            </select>
+            <p class="text-sm muted" style="margin:6px 0 16px;">
+                A recommendation only. The client still chooses, so the price they end up paying is one they agreed to.
+            </p>
+
+            <button class="btn btn-ghost btn-sm" type="submit">
+                <x-heroicon-o-arrow-uturn-left style="width:14px;height:14px;"/>
+                Send back to the client
+            </button>
+        </form>
     </div>
     @endif
 

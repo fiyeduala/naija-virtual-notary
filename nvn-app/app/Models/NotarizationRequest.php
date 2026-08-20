@@ -40,6 +40,8 @@ class NotarizationRequest extends Model
             'paid_at'             => 'datetime',
             'accepted_at'         => 'datetime',
             'completed_at'        => 'datetime',
+            'category_query_at'          => 'datetime',
+            'category_query_resolved_at' => 'datetime',
         ];
     }
 
@@ -157,6 +159,81 @@ class NotarizationRequest extends Model
     public function handledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'handled_by');
+    }
+
+    /** Whoever said the category was wrong — a notary or an admin. */
+    public function categoryQueriedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'category_query_by');
+    }
+
+    /** What the desk thinks this document actually is. A recommendation only. */
+    public function categorySuggestedService(): BelongsTo
+    {
+        return $this->belongsTo(NotaryService::class, 'category_suggested_service_id');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Wrong category
+    |--------------------------------------------------------------------------
+    |
+    | The client picks a service before anyone has read the document, so the
+    | pick is a guess. When the desk sees it is the wrong one, the request is
+    | not cancelled and the money is not refunded: the query pauses the work,
+    | the client re-picks, and any price difference becomes an ordinary
+    | outstanding balance on the same request.
+    */
+
+    /** Raised and not yet answered. */
+    public function hasOpenCategoryQuery(): bool
+    {
+        return $this->category_query_at !== null && $this->category_query_resolved_at === null;
+    }
+
+    /**
+     * Answered, but the correction cost more and the difference has not landed.
+     *
+     * Scoped to requests that have actually been through a query, because an
+     * ordinary part payment also leaves a balance and that client is mid-job
+     * rather than blocked.
+     */
+    public function awaitingCategoryDifference(): bool
+    {
+        return $this->category_query_resolved_at !== null
+            && ! $this->hasOpenCategoryQuery()
+            && $this->balanceMinor() > 0;
+    }
+
+    /** Can the desk work on this, or is the category still being sorted out? */
+    public function isCategoryBlocked(): bool
+    {
+        return $this->hasOpenCategoryQuery() || $this->awaitingCategoryDifference();
+    }
+
+    /** Requests sitting with the client, waiting to be re-categorised. */
+    public function scopeUnderCategoryQuery($query)
+    {
+        return $query->whereNotNull('category_query_at')->whereNull('category_query_resolved_at');
+    }
+
+    /**
+     * Paid more than the request now costs, in minor units.
+     *
+     * balanceMinor() floors at zero, which is right for "what is still owed"
+     * and hides the case this creates: a client re-categorised down, from a
+     * deed to an attestation, and is now in credit. Nothing here refunds it —
+     * it is surfaced so a person can decide between a refund and a credit.
+     */
+    public function overpaidMinor(): int
+    {
+        return max(0, $this->amountPaidMinor() - $this->feeMinor());
+    }
+
+    /** The overpayment, formatted. */
+    public function displayOverpaid(): string
+    {
+        return static::money($this->overpaidMinor(), $this->currency ?: 'NGN');
     }
 
     /*

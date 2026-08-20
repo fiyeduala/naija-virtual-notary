@@ -78,6 +78,12 @@ class NotarizationRequestResource extends Resource
                 Tables\Filters\Filter::make('never_followed_up')
                     ->label('Not chased yet')
                     ->query(fn (Builder $query) => $query->unpaid()->whereNull('payment_followed_up_at')),
+                // These do not show up under any status filter — a queried
+                // request keeps the status it had, which is exactly why it is
+                // easy to lose. This is the only way to list them.
+                Tables\Filters\Filter::make('category_query')
+                    ->label('Category queried')
+                    ->query(fn (Builder $query) => $query->underCategoryQuery()),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),

@@ -4,9 +4,12 @@ namespace App\Filament\Resources\NotarizationRequestResource\Pages;
 
 use App\Enums\RequestStatus;
 use App\Filament\Resources\NotarizationRequestResource;
+use App\Models\NotaryService;
 use App\Models\Payment;
+use App\Services\RequestCategoryService;
 use App\Services\RequestFulfillmentService;
 use Filament\Actions;
+use Filament\Forms;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
@@ -71,6 +74,82 @@ class ViewNotarizationRequest extends ViewRecord
                         ->send();
                 }),
 
+            // Wrong category. The admin gets this on every live request, not
+            // just their own desk's, because they are the only person who sees
+            // a partner's work before the client does — and a document filed
+            // under the wrong service is sealed wrongly or not at all.
+            Actions\Action::make('queryCategory')
+                ->label('Wrong category')
+                ->icon('heroicon-o-arrow-uturn-left')
+                ->color('warning')
+                ->visible(fn ($record) => $record->isPriced()
+                    && ! $record->hasOpenCategoryQuery()
+                    && in_array($record->status, RequestStatus::active(), true))
+                ->modalHeading('Send this back to the client')
+                ->modalDescription('Nothing is refunded and nothing is cancelled. What they have paid '
+                    . 'stays on the request; they re-pick and are charged only the difference, if there is one.')
+                ->modalSubmitActionLabel('Send it back')
+                ->modalWidth('2xl')
+                ->form([
+                    Forms\Components\Textarea::make('reason')
+                        ->label('What is wrong with it?')
+                        ->helperText('The client sees this word for word, so write it to them.')
+                        ->placeholder('e.g. This is a deed of assignment, not an affidavit — it needs two witnesses and a different jurat.')
+                        ->rows(3)
+                        ->required()
+                        ->maxLength(1000),
+                    Forms\Components\Select::make('service_id')
+                        ->label('What should it be?')
+                        ->helperText('A recommendation only — the client still chooses, so the price they '
+                            . 'end up paying is one they agreed to. Leave blank to let them decide.')
+                        // The assigned notary's own list. Anything else would
+                        // price this job at a notary who is not doing it.
+                        ->options(fn ($record) => NotaryService::where('notary_profile_id', $record->notary_id)
+                            ->where('active', true)
+                            ->where('id', '!=', $record->service_id)
+                            ->orderBy('service_type')
+                            ->get()
+                            ->mapWithKeys(fn (NotaryService $s) => [
+                                $s->id => $s->service_type . ' — ' . $s->displayPrice($record->currency ?: 'NGN'),
+                            ]))
+                        ->searchable()
+                        ->native(false),
+                ])
+                ->action(function ($record, array $data) {
+                    $suggested = ! empty($data['service_id'])
+                        ? NotaryService::where('notary_profile_id', $record->notary_id)
+                            ->where('active', true)
+                            ->find($data['service_id'])
+                        : null;
+
+                    app(RequestCategoryService::class)->query(
+                        $record, auth()->user(), $data['reason'], $suggested,
+                    );
+
+                    $this->record->refresh();
+
+                    Notification::make()
+                        ->title('Sent back to the client')
+                        ->body('Their payment is untouched. They will be asked only for the difference.')
+                        ->success()
+                        ->send();
+                }),
+
+            Actions\Action::make('withdrawCategoryQuery')
+                ->label('Withdraw query')
+                ->icon('heroicon-o-arrow-uturn-right')
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalHeading('Withdraw the category query')
+                ->modalDescription('The request goes back on the desk exactly as it was booked. The client is not emailed again.')
+                ->visible(fn ($record) => $record->hasOpenCategoryQuery())
+                ->action(function ($record) {
+                    app(RequestCategoryService::class)->withdraw($record, auth()->user());
+                    $this->record->refresh();
+
+                    Notification::make()->title('Query withdrawn')->success()->send();
+                }),
+
             // Available for every sealed request, whoever notarized it.
             Actions\Action::make('view_notarized')
                 ->label('View notarized document')
@@ -121,6 +200,36 @@ class ViewNotarizationRequest extends ViewRecord
                     ->color(fn ($record) => $record->balanceMinor() > 0 ? 'danger' : 'success'),
                 TextEntry::make('document_use')->label('Reason')->columnSpanFull(),
             ])->columns(2),
+            // Only present once someone has queried the category, and then it
+            // is the most important thing on the page: a request that looks
+            // Paid and on time is going nowhere while this is open.
+            Section::make('Category query')
+                ->description('The desk said this document is not what it was booked as. The payment was left where it is.')
+                ->visible(fn ($record) => $record->category_query_at !== null)
+                ->schema([
+                    TextEntry::make('category_state')
+                        ->label('State')
+                        ->badge()
+                        ->state(fn ($record) => match (true) {
+                            $record->hasOpenCategoryQuery()        => 'Waiting on the client',
+                            $record->awaitingCategoryDifference()  => 'Answered — ' . $record->displayBalance() . ' outstanding',
+                            default                               => 'Settled',
+                        })
+                        ->color(fn ($record) => $record->isCategoryBlocked() ? 'warning' : 'success'),
+                    TextEntry::make('categoryQueriedBy.full_name')->label('Raised by')->placeholder('—'),
+                    TextEntry::make('category_query_at')->label('Raised')->dateTime('j M Y · g:i A')->placeholder('—'),
+                    TextEntry::make('category_query_resolved_at')->label('Answered')->dateTime('j M Y · g:i A')->placeholder('Not yet'),
+                    TextEntry::make('categorySuggestedService.service_type')->label('Recommended')->placeholder('Left to the client'),
+                    // Surfaced only when it happens, because a credit is a
+                    // decision someone has to make and nothing here makes it.
+                    TextEntry::make('overpaid')
+                        ->label('In credit')
+                        ->badge()
+                        ->color('warning')
+                        ->state(fn ($record) => $record->displayOverpaid() . ' — refund or credit the client')
+                        ->visible(fn ($record) => $record->overpaidMinor() > 0),
+                    TextEntry::make('category_query_reason')->label('Reason given')->columnSpanFull()->placeholder('—'),
+                ])->columns(3),
             Section::make('Scheduling')->schema([
                 TextEntry::make('session.scheduled_start_at')->label('Scheduled')->dateTime()->placeholder('—'),
                 TextEntry::make('session.identity_verified')->label('Identity verified')->badge()

@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Notary;
 use App\Enums\RequestStatus;
 use App\Http\Controllers\Controller;
 use App\Models\NotarizationRequest;
+use App\Models\NotaryService;
 use App\Models\RequestDocument;
+use App\Services\RequestCategoryService;
 use App\Services\RequestFulfillmentService;
 use App\Support\AuditLogger;
 use Illuminate\Http\RedirectResponse;
@@ -16,7 +18,10 @@ use Illuminate\View\View;
 
 class NotaryRequestController extends Controller
 {
-    public function __construct(private RequestFulfillmentService $fulfillment) {}
+    public function __construct(
+        private RequestFulfillmentService $fulfillment,
+        private RequestCategoryService $categories,
+    ) {}
 
     /**
      * Paid requests awaiting a response.
@@ -47,9 +52,101 @@ class NotaryRequestController extends Controller
     public function show(NotarizationRequest $request): View
     {
         $this->authorizeNotary($request);
-        $request->load('client', 'service', 'session', 'documents');
+        $request->load('client', 'service', 'session', 'documents',
+            'categorySuggestedService', 'categoryQueriedBy');
 
-        return view('notary.requests.show', ['request' => $request]);
+        return view('notary.requests.show', [
+            'request'  => $request,
+            'services' => $this->notaryServices($request),
+        ]);
+    }
+
+    /**
+     * "This is not the category it was booked under."
+     *
+     * Open to the assigned notary and to the admin both, because the admin is
+     * the one who sees every request and the only one who sees them before the
+     * partner has answered. Nothing is refunded and nothing is cancelled — the
+     * client re-picks and pays any difference, which is the whole reason this
+     * exists instead of a cancel-and-rebook.
+     */
+    public function queryCategory(NotarizationRequest $request, Request $http): RedirectResponse
+    {
+        $this->authorizeNotary($request);
+
+        if (! $request->isPriced()) {
+            return back()->with('status', 'There is no category on this request to query yet.');
+        }
+
+        if (! in_array($request->status, RequestStatus::active(), true)) {
+            return back()->with('status', 'This request is finished — the category can no longer be changed.');
+        }
+
+        if ($request->hasOpenCategoryQuery()) {
+            return back()->with('status', 'A query is already open on this request, waiting on the client.');
+        }
+
+        $validated = $http->validate([
+            'reason'       => ['required', 'string', 'max:1000'],
+            'service_id'   => ['nullable', 'integer'],
+        ]);
+
+        // A recommendation has to come off the assigned notary's own price
+        // list, or the fee it produces would not be a price this notary offers.
+        $suggested = ! empty($validated['service_id'])
+            ? $this->notaryServices($request)->firstWhere('id', (int) $validated['service_id'])
+            : null;
+
+        if (! empty($validated['service_id']) && ! $suggested) {
+            return back()->withErrors(['service_id' => 'That is not one of this notary\'s services.']);
+        }
+
+        if ($suggested && $suggested->id === $request->service_id) {
+            return back()->withErrors([
+                'service_id' => 'That is the category it is already booked under. Recommend a different one, or leave the recommendation blank.',
+            ]);
+        }
+
+        $this->categories->query($request, Auth::user(), $validated['reason'], $suggested);
+
+        return redirect()->route('notary.requests.show', $request)->with(
+            'status',
+            'Sent back to the client to re-pick. Their payment stays on the request — they will '
+                . 'only be asked for the difference, if the right category costs more.',
+        );
+    }
+
+    /** The desk changes its mind before the client has answered. */
+    public function withdrawCategoryQuery(NotarizationRequest $request): RedirectResponse
+    {
+        $this->authorizeNotary($request);
+
+        if (! $request->hasOpenCategoryQuery()) {
+            return back()->with('status', 'There is no open query on this request.');
+        }
+
+        $this->categories->withdraw($request, Auth::user());
+
+        return redirect()->route('notary.requests.show', $request)
+            ->with('status', 'Query withdrawn. The request is back on your desk as it was booked.');
+    }
+
+    /**
+     * The assigned notary's active price list — the only categories this
+     * request can move between, since the notary of record does not change.
+     *
+     * @return \Illuminate\Support\Collection<int, NotaryService>
+     */
+    private function notaryServices(NotarizationRequest $request): \Illuminate\Support\Collection
+    {
+        if (! $request->notary_id) {
+            return collect();
+        }
+
+        return NotaryService::where('notary_profile_id', $request->notary_id)
+            ->where('active', true)
+            ->orderBy('service_type')
+            ->get();
     }
 
     /**

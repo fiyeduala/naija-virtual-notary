@@ -25,7 +25,10 @@ class ClientDashboardController extends Controller
 
         $active = NotarizationRequest::where('client_id', $userId)
             ->whereIn('status', $activeStatuses)
-            ->with('notary.user', 'session')
+            // service and documents feed isCategoryBlocked() on every row, which
+            // otherwise costs three queries a request just to decide whether to
+            // draw a banner.
+            ->with('notary.user', 'session', 'service', 'documents')
             ->latest()
             ->get();
 

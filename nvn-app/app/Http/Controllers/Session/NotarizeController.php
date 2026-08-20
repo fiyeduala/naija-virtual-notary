@@ -168,6 +168,21 @@ class NotarizeController extends Controller
         $session = $request->session;
         abort_unless($session, 404);
 
+        // Guard: the category is under query, or was corrected upwards and the
+        // difference has not arrived. Placements can go on — losing that work
+        // would be its own punishment — but the seal cannot, because a sealed
+        // document is a delivered job and there is no taking it back if the
+        // client never pays the balance.
+        if ($request->isCategoryBlocked()) {
+            return back()->withErrors([
+                'placements' => $request->hasOpenCategoryQuery()
+                    ? 'This request is filed under the wrong category and the client has been asked '
+                        . 'to re-pick. Nothing can be sealed until they answer.'
+                    : 'The corrected category costs more and ' . $request->displayBalance()
+                        . ' is still outstanding. It will come back to you the moment that clears.',
+            ]);
+        }
+
         // Guard: never seal a document with nothing on it. Every document is
         // checked, not just the primary one — the client paid for each of them
         // and an unsealed extra is the failure they would only discover after

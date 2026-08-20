@@ -33,4 +33,8 @@ Route::middleware(['auth', 'verified.otp', 'role:notary,admin'])->group(function
     Route::get('/notary/requests/{request}/documents/{document}', [NotaryRequestController::class, 'document'])->name('notary.requests.document');
     Route::post('/notary/requests/{request}/accept', [NotaryRequestController::class, 'accept'])->name('notary.requests.accept');
     Route::post('/notary/requests/{request}/decline', [NotaryRequestController::class, 'decline'])->name('notary.requests.decline');
+    // Wrong category: sends the request back to the client to re-pick without
+    // refunding or cancelling anything.
+    Route::post('/notary/requests/{request}/category-query', [NotaryRequestController::class, 'queryCategory'])->name('notary.requests.category.query');
+    Route::post('/notary/requests/{request}/category-query/withdraw', [NotaryRequestController::class, 'withdrawCategoryQuery'])->name('notary.requests.category.withdraw');
 });

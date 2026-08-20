@@ -248,6 +248,19 @@
                             <span>No fixed time</span>
                         @endif
                     </div>
+                    {{-- Said here as well as behind the button, because "your
+                         payment is safe" is the part that stops a client
+                         phoning, and a button label has no room for it. --}}
+                    @if($req->isCategoryBlocked())
+                        <div class="req-meta" style="color:var(--warning); margin-top:4px;">
+                            <x-heroicon-o-exclamation-triangle style="width:13px;height:13px;"/>
+                            <span>
+                                {{ $req->hasOpenCategoryQuery()
+                                    ? 'Booked under the wrong category — your payment is safe.'
+                                    : $req->displayBalance() . ' left to pay after the category was corrected.' }}
+                            </span>
+                        </div>
+                    @endif
                 </div>
                 <div class="req-actions">
                     {{-- The thread only exists once a notary is assigned — before that
@@ -258,6 +271,18 @@
                             Messages
                         </a>
                     @endif
+
+                    {{-- A queried category outranks the status. The request may
+                         say "Paid" and be perfectly on track by every other
+                         measure, and still be going nowhere until this is
+                         answered — so it takes the one action slot. --}}
+                    @if($req->isCategoryBlocked())
+                        <a href="{{ route('client.request.category.show', $req) }}" class="btn btn-sm">
+                            {{ $req->hasOpenCategoryQuery()
+                                ? 'Choose the right category →'
+                                : 'Pay ' . $req->displayBalance() . ' to continue →' }}
+                        </a>
+                    @else
 
                     {{-- The action has to match the status. "Join session" on a
                          request that is still awaiting payment or a notary's
@@ -275,6 +300,7 @@
                         @default
                             <a href="{{ route('session.join', $req) }}" class="btn btn-sm">Join session &rarr;</a>
                     @endswitch
+                    @endif
                 </div>
             </div>
             @empty

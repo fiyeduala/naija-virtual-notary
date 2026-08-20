@@ -33,16 +33,32 @@ class RequestPaymentController extends Controller
                 ->with('status', 'Choose a notary and a time slot first.');
         }
 
-        // Guard against paying twice.
-        if (in_array($request->status, [RequestStatus::Paid, RequestStatus::Accepted], true)) {
+        // An unanswered category query means the price on this request is the
+        // wrong one. Sending them to checkout now would take money against a
+        // service the desk has already said does not apply.
+        if ($request->hasOpenCategoryQuery()) {
+            return redirect()->route('client.request.category.show', $request);
+        }
+
+        // What is actually owed, not what the job costs. On a first payment
+        // the two are the same figure; they part company when a category query
+        // has been answered with a dearer service, and then charging the fee
+        // again would take the client's first payment twice.
+        //
+        // Every document on the request is counted, not just the primary one —
+        // see NotarizationRequest::feeMinor(). The client agreed to this same
+        // figure on the review screen, which reads it from the same place.
+        $amount = $request->balanceMinor();
+
+        // Guard against paying twice. Asked of the balance rather than the
+        // status, because status alone cannot tell a paid request from one
+        // that is paid and owes a difference — and it is the money question
+        // either way.
+        if ($amount <= 0) {
             return redirect()->route('client.dashboard')
                 ->with('status', 'This request is already paid.');
         }
 
-        // Every document on the request, not just the primary one — see
-        // NotarizationRequest::feeMinor(). The client agreed to this same
-        // figure on the review screen, which reads it from the same place.
-        $amount = $request->feeMinor();
         $reference = $this->paystack->reference('req');
 
         // A second sighting of the same browser, taken at the last moment it is

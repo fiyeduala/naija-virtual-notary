@@ -95,6 +95,15 @@ class RequestFulfillmentService
             // previous guard only short-circuited on Paid and would have reset
             // an in-progress request back to the start.
             if (! in_array($request->status, [RequestStatus::Draft, RequestStatus::Submitted], true)) {
+                // One exception, and only one: a request paused by a category
+                // correction whose difference has just landed. It was already
+                // Paid when the query was raised, so none of the below applies
+                // — but the clock this stopped has to be started again, or the
+                // job sits on a desk with nothing telling anyone it is due.
+                if ($request->category_query_resolved_at !== null && $request->balanceMinor() <= 0) {
+                    app(RequestCategoryService::class)->resume($request);
+                }
+
                 return;
             }
 

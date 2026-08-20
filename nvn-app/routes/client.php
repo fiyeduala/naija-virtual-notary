@@ -3,6 +3,7 @@
 use App\Http\Controllers\Client\ClientDashboardController;
 use App\Http\Controllers\Client\ClientRequestController;
 use App\Http\Controllers\Client\MarketplaceController;
+use App\Http\Controllers\Client\RequestCategoryController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -26,4 +27,10 @@ Route::middleware(['auth', 'verified.otp', 'role:client'])->group(function () {
     Route::get('/client/request/{request}/notaries', [MarketplaceController::class, 'index'])->name('client.marketplace.index');
     Route::get('/client/request/{request}/notaries/{notary}', [MarketplaceController::class, 'show'])->name('client.marketplace.show');
     Route::post('/client/request/{request}/select', [MarketplaceController::class, 'select'])->name('client.marketplace.select');
+
+    // Wrong category — re-pick after the desk has queried it. Deliberately not
+    // inside the marketplace routes: those refuse anything past Submitted, and
+    // every request that reaches here has already been paid for.
+    Route::get('/client/request/{request}/category', [RequestCategoryController::class, 'show'])->name('client.request.category.show');
+    Route::post('/client/request/{request}/category', [RequestCategoryController::class, 'update'])->name('client.request.category.update');
 });
