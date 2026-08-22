@@ -32,16 +32,28 @@ class OfflinePaymentService
      */
     private const REUSE_WINDOW_DAYS = 30;
 
-    public function __construct(private RequestFulfillmentService $fulfillment) {}
+    public function __construct(
+        private RequestFulfillmentService $fulfillment,
+        private OffsiteNotarizationService $offsite,
+    ) {}
 
     /**
      * Record a request fee that arrived outside Paystack.
      *
      * $details: method, reference (their transfer ref), note, received_at, amount.
+     *
+     * Handles an offsite job as well, and has to: bank transfer is how most
+     * money on this platform actually arrives, and a notary who transfers their
+     * sealing fee would otherwise be unrecordable. Every reference to the fee
+     * type below goes through $request->feeType(), so an offsite fee is written
+     * as 'offsite_fee' and stays outside scopePayable() — writing it as a
+     * request fee would put it in the payout run and hand the notary back a
+     * share of the money they just paid us.
      */
     public function recordRequestFee(NotarizationRequest $request, array $details, ?int $actorId = null): Payment
     {
         return DB::transaction(function () use ($request, $details, $actorId) {
+            $type = $request->feeType();
             // Paid in full — hand back the payment that exists and change
             // nothing. A second successful row for a fee already covered would
             // double what the notary is owed and what the ledger says the client
@@ -61,7 +73,7 @@ class OfflinePaymentService
             // owed. A successful row is never reused — that is money that
             // arrived, and this one is money on top of it.
             $payment = $request->payments()
-                ->where('type', 'request_fee')
+                ->where('type', $type)
                 ->whereIn('status', ['pending', 'failed'])
                 ->lockForUpdate()
                 ->latest('id')
@@ -84,8 +96,10 @@ class OfflinePaymentService
             } else {
                 $payment = Payment::create($attributes + [
                     'request_id'         => $request->id,
+                    // On an offsite job this is the notary — they are the
+                    // platform's customer here. See OffsiteNotarizationService.
                     'user_id'            => $request->client_id,
-                    'type'               => 'request_fee',
+                    'type'               => $type,
                     'status'             => 'pending',
                     'paystack_reference' => $this->reference(),
                 ]);
@@ -93,10 +107,18 @@ class OfflinePaymentService
 
             $this->audit($payment, 'payment.recorded_offline', $actorId, [
                 'request_id' => $request->id,
+                'type'       => $type,
             ]);
 
-            // Same path as the webhook: notifies the notary, starts the clock.
-            $this->fulfillment->settle($payment);
+            // Same path as the webhook, whichever kind of fee this is: for a
+            // marketplace request that notifies the notary and starts the
+            // clock, for an offsite job it unlocks the editor. Neither is
+            // reachable from the other's settle().
+            if ($request->is_offsite) {
+                $this->offsite->settle($payment);
+            } else {
+                $this->fulfillment->settle($payment);
+            }
 
             return $payment->fresh();
         });
@@ -114,7 +136,7 @@ class OfflinePaymentService
     public function settledFee(NotarizationRequest $request): ?Payment
     {
         return $request->payments()
-            ->where('type', 'request_fee')
+            ->where('type', $request->feeType())
             ->where('status', 'successful')
             ->latest('id')
             ->first();

@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\NotaryReviewController;
 use App\Http\Controllers\Admin\RequestDocumentController;
 use App\Http\Controllers\Notary\NotaryApplicationController;
 use App\Http\Controllers\Notary\NotaryProfileController;
+use App\Http\Controllers\Notary\OffsiteNotarizationController;
 use App\Http\Controllers\Notary\OnboardingFeeController;
 use App\Http\Controllers\Webhooks\PaystackWebhookController;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +47,23 @@ Route::middleware(['auth', 'verified.otp', 'role:notary'])->group(function () {
     // Named golive still, because the name is what every blade and redirect
     // holds; what it does behind that name is now ask, not do.
     Route::post('/notary/profile/go-live', [NotaryProfileController::class, 'requestListing'])->name('notary.profile.golive');
+});
+
+// Offsite notarization — a job the notary took on themselves, brought here only
+// to be sealed. Admin is included because they hold the platform's own notary
+// profile and may seal offsite work the same way; every route below scopes to
+// the signed-in notary's own profile, so nobody sees anybody else's jobs.
+Route::middleware(['auth', 'verified.otp', 'role:notary,admin'])->group(function () {
+    Route::get('/notary/offsite', [OffsiteNotarizationController::class, 'index'])->name('notary.offsite.index');
+    // Before the {request} route, or "new" is read as an id.
+    Route::get('/notary/offsite/new', [OffsiteNotarizationController::class, 'create'])->name('notary.offsite.create');
+    Route::post('/notary/offsite', [OffsiteNotarizationController::class, 'store'])->name('notary.offsite.store');
+    Route::get('/notary/offsite/{request}', [OffsiteNotarizationController::class, 'show'])->name('notary.offsite.show');
+    Route::get('/notary/offsite/{request}/documents/{document}', [OffsiteNotarizationController::class, 'document'])->name('notary.offsite.document');
+    Route::post('/notary/offsite/{request}/documents', [OffsiteNotarizationController::class, 'addDocuments'])->name('notary.offsite.documents.add');
+    Route::delete('/notary/offsite/{request}/documents/{document}', [OffsiteNotarizationController::class, 'removeDocument'])->name('notary.offsite.documents.remove');
+    Route::post('/notary/offsite/{request}/pay', [OffsiteNotarizationController::class, 'pay'])->name('notary.offsite.pay');
+    Route::get('/notary/offsite/{request}/callback', [OffsiteNotarizationController::class, 'callback'])->name('notary.offsite.callback');
 });
 
 // Admin review

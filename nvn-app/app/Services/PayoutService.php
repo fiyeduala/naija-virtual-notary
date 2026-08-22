@@ -42,7 +42,14 @@ class PayoutService
             ->payable()
             ->whereHas('request', fn ($q) => $q
                 ->where('notary_id', $profile->id)
-                ->where('status', RequestStatus::Completed->value))
+                ->where('status', RequestStatus::Completed->value)
+                // Belt and braces on money. scopePayable() already excludes an
+                // offsite fee by type, and that is the real boundary — but this
+                // query is the one that decides what the platform hands over,
+                // and an offsite fee is money the notary paid US. Paying a
+                // share of it back would be the platform refunding its own
+                // revenue, so it is excluded twice on purpose.
+                ->where('is_offsite', false))
             ->with('request')
             ->get();
     }

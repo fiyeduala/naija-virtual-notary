@@ -711,6 +711,18 @@
                     <div class="quick-sub">View all paid requests awaiting your action</div>
                 </div>
             </a>
+            {{-- Work the notary took on themselves, brought here only to be
+                 sealed. Deliberately alongside the marketplace links and not
+                 buried in the profile: it is a second way of earning, and a
+                 notary standing in front of a walk-in client needs to reach it
+                 in one tap. --}}
+            <a href="{{ route('notary.offsite.index') }}" class="quick-card">
+                <div class="quick-icon"><x-heroicon-o-briefcase style="width:22px;height:22px;"/></div>
+                <div>
+                    <div class="quick-title">Offsite Notarization</div>
+                    <div class="quick-sub">Seal a document from a job you took on yourself — {{ \App\Support\Settings::offsiteFeeDisplay() }} per document</div>
+                </div>
+            </a>
             @if($isAdminDesk ?? false)
             {{-- notary.profile.edit is role:notary — the admin manages the
                  system-native profile and its assets from the panel instead. --}}

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Webhooks;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Notary\OnboardingFeeController;
+use App\Services\OffsiteNotarizationService;
 use App\Services\PayoutService;
 use App\Services\PaystackService;
 use App\Services\RequestFulfillmentService;
@@ -24,6 +25,7 @@ class PaystackWebhookController extends Controller
         private PaystackService $paystack,
         private RequestFulfillmentService $fulfillment,
         private PayoutService $payouts,
+        private OffsiteNotarizationService $offsite,
     ) {}
 
     public function handle(Request $request): Response
@@ -49,6 +51,11 @@ class PaystackWebhookController extends Controller
             match ($purpose) {
                 'onboarding_fee' => OnboardingFeeController::markPaid($reference),
                 'request_fee'    => $this->fulfillment->markPaid($reference),
+                // A notary paying us to seal their own offsite job. Settled on
+                // its own path because nothing in the marketplace path applies:
+                // no notary to notify, no response clock to start, and no share
+                // of it owed back to anybody.
+                'offsite_fee'    => $this->offsite->settleReference($reference),
                 default          => null,
             };
         }

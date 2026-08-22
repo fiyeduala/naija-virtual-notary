@@ -39,6 +39,7 @@ class PlatformSettingsPage extends Page implements HasForms
             'site_logo'               => \App\Support\Branding::path('site_logo'),
             'site_icon'               => \App\Support\Branding::path('site_icon'),
             'email_rate_per_minute'   => \App\Support\Settings::int('email_rate_per_minute', 30),
+            'offsite_fee_ngn'         => \App\Support\Settings::offsiteFeeMinor() / 100,
             'asset_guide_url'         => \App\Support\Settings::string('asset_guide_url', ''),
             'tawk_property_id'        => \App\Support\Settings::string('tawk_property_id', (string) config('nvn.tawk.property_id', '')),
             'tawk_widget_id'          => \App\Support\Settings::string('tawk_widget_id', (string) config('nvn.tawk.widget_id', 'default')),
@@ -71,6 +72,27 @@ class PlatformSettingsPage extends Page implements HasForms
                         Forms\Components\TextInput::make('onboarding_fee_ngn')
                             ->label('Onboarding fee (₦ NGN)')
                             ->helperText('Enter in naira — e.g. 30000 for ₦30,000')
+                            ->numeric()
+                            ->prefix('₦')
+                            ->minValue(0)
+                            ->required(),
+                    ]),
+
+                // ── Offsite notarization ─────────────────────────────────
+                Forms\Components\Section::make('Offsite notarization')
+                    ->description('What a notary pays to seal a document they took on themselves — a job '
+                        . 'they got in their own office or at a client\'s premises, brought here only to '
+                        . 'be stamped and sealed digitally. The platform takes the fee, hands back the '
+                        . 'sealed PDF, and does nothing else: no client account, no appointment, no '
+                        . 'commission, and no payout, because this money is paid TO you, not through you.')
+                    ->schema([
+                        Forms\Components\TextInput::make('offsite_fee_ngn')
+                            ->label('Fee per document (₦ NGN)')
+                            ->helperText('Charged for each document on the job — three documents is three '
+                                . 'times this. A notary is shown the total before paying, and the price '
+                                . 'is frozen onto the job when they start it, so changing this never '
+                                . 'moves the total of one already under way. Set 0 to make offsite '
+                                . 'sealing free; notaries then go straight from upload to the editor.')
                             ->numeric()
                             ->prefix('₦')
                             ->minValue(0)
@@ -344,6 +366,8 @@ class PlatformSettingsPage extends Page implements HasForms
         // its text name rather than to whatever was uploaded before.
         PlatformSetting::set('site_logo', static::uploadedPath($data['site_logo'] ?? null), 'string');
         PlatformSetting::set('site_icon', static::uploadedPath($data['site_icon'] ?? null), 'string');
+
+        PlatformSetting::set('offsite_fee_ngn', max(0, (int) round((float) ($data['offsite_fee_ngn'] ?? 0) * 100)), 'integer');
 
         // Stored as typed; Settings::assetGuideUrl() is what decides whether it
         // is safe to put in an href, so a mistake here shows as a missing

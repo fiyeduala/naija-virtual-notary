@@ -27,19 +27,24 @@ class PlatformOverview extends BaseWidget
             ->whereNotNull('onboarding_fee_paid_at')
             ->count();
 
-        $awaitingNotary = NotarizationRequest::where('status', RequestStatus::Paid->value)->count();
+        // Offsite excluded: a paid offsite job is not waiting on anybody. The
+        // notary who paid for it is the one who will seal it, and counting it
+        // here would show the desk work that does not exist.
+        $awaitingNotary = NotarizationRequest::marketplace()
+            ->where('status', RequestStatus::Paid->value)
+            ->count();
 
         $hardCopyQueue = NotarizationRequest::where('status', RequestStatus::Completed->value)
             ->where('hard_copy_requested', true)
             ->count();
 
-        $revenueToday = Payment::where('type', 'request_fee')
+        $revenueToday = Payment::whereIn('type', ['request_fee', 'offsite_fee'])
             ->where('status', 'successful')
             ->where('currency', 'NGN')
             ->whereDate('completed_at', today())
             ->sum('amount');
 
-        $revenueMonth = Payment::where('type', 'request_fee')
+        $revenueMonth = Payment::whereIn('type', ['request_fee', 'offsite_fee'])
             ->where('status', 'successful')
             ->where('currency', 'NGN')
             ->where('completed_at', '>=', now()->startOfMonth())

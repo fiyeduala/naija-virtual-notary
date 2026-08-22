@@ -88,7 +88,8 @@ class PaymentResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('type')->options([
-                    'request_fee' => 'Request fee', 'onboarding_fee' => 'Onboarding fee', 'payout' => 'Payout',
+                    'request_fee' => 'Request fee', 'onboarding_fee' => 'Onboarding fee',
+                    'offsite_fee' => 'Offsite sealing fee', 'payout' => 'Payout',
                 ]),
                 Tables\Filters\SelectFilter::make('status')->options([
                     'pending' => 'Pending', 'successful' => 'Successful', 'failed' => 'Failed', 'refunded' => 'Refunded',

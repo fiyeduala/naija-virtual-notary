@@ -84,6 +84,30 @@ class Settings
     }
 
     /**
+     * What a notary pays the platform to seal one document they brought in
+     * themselves, in minor units (kobo).
+     *
+     * NGN only, and deliberately so: the payer is a Nigerian notary public
+     * paying a platform charge, not a client choosing a currency to be billed
+     * in. A single figure also means the offsite screens never have to explain
+     * an exchange rate to someone who is standing in front of a customer.
+     *
+     * Zero is a legitimate setting — it makes offsite sealing free, which is a
+     * reasonable thing to do while testing or as an introductory offer, and the
+     * checkout skips straight past payment when it sees it.
+     */
+    public static function offsiteFeeMinor(): int
+    {
+        return max(0, static::int('offsite_fee_ngn', (int) config('nvn.offsite_fee_ngn', 100000)));
+    }
+
+    /** The offsite per-document fee, formatted. */
+    public static function offsiteFeeDisplay(): string
+    {
+        return '₦' . number_format(static::offsiteFeeMinor() / 100, 2);
+    }
+
+    /**
      * Where partners are sent to learn how to obtain an e-signature, stamp and
      * seal. Blank means the button is simply not drawn.
      *

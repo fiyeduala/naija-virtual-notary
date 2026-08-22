@@ -47,6 +47,12 @@ class NotarizationRequestResource extends Resource
                         RequestStatus::Cancelled, RequestStatus::Refunded => 'danger',
                         default => 'gray',
                     }),
+                // A job the notary brought in themselves. Worth a column rather
+                // than a filter alone, because almost every other column on the
+                // row reads differently for one: the "client" is the notary,
+                // there is no service, and the fee is ours rather than theirs.
+                Tables\Columns\IconColumn::make('is_offsite')->label('Offsite')->boolean()
+                    ->tooltip('The notary paid us to seal work they took on themselves. No client, no payout.'),
                 Tables\Columns\IconColumn::make('hard_copy_requested')->label('Hard copy')->boolean(),
                 Tables\Columns\IconColumn::make('was_fallback')->label('Platform-covered')->boolean()
                     ->tooltip('The platform did the work on the assigned notary\'s behalf, under their seal.'),
@@ -69,6 +75,7 @@ class NotarizationRequestResource extends Resource
                     ->options(collect(RequestStatus::cases())->mapWithKeys(fn ($c) => [$c->value => $c->label()])->all()),
                 Tables\Filters\TernaryFilter::make('hard_copy_requested')->label('Hard copy'),
                 Tables\Filters\TernaryFilter::make('was_fallback')->label('Platform-covered'),
+                Tables\Filters\TernaryFilter::make('is_offsite')->label('Offsite'),
                 // The whole point of the follow-up feature is finding these
                 // people, and "status is draft or submitted" is two clicks and
                 // a thing you have to know.

@@ -39,6 +39,15 @@ return [
     'onboarding_fee_ngn' => 3000000,
 
     /*
+    | Offsite notarization: what a notary pays to seal ONE document they
+    | brought in themselves, in NGN kobo (₦1,000 = 100,000 kobo).
+    |
+    | Only the fallback. The live figure is set by the admin under Platform
+    | settings — see App\Support\Settings::offsiteFeeMinor().
+    */
+    'offsite_fee_ngn' => 100000,
+
+    /*
     | Automatic notary payouts via Paystack Transfers.
     |
     | Off by default, and deliberately so: transfers debit the Paystack balance

@@ -42,6 +42,8 @@ class NotarizationRequest extends Model
             'completed_at'        => 'datetime',
             'category_query_at'          => 'datetime',
             'category_query_resolved_at' => 'datetime',
+            'is_offsite'          => 'boolean',
+            'unit_fee_minor'      => 'integer',
         ];
     }
 
@@ -268,9 +270,34 @@ class NotarizationRequest extends Model
     {
         $currency ??= $this->currency ?: 'NGN';
 
-        $unitPrice = $this->service?->priceFor($currency) ?? 0;
+        // A frozen unit price wins over the service, and is how an offsite job
+        // is priced at all — it has no service, because there is no category to
+        // choose when the platform is only doing the sealing. Frozen at
+        // creation so that an admin changing the offsite fee tomorrow cannot
+        // move the total of a job somebody is halfway through paying for.
+        $unitPrice = $this->unit_fee_minor ?? $this->service?->priceFor($currency) ?? 0;
 
         return $unitPrice * $this->billableDocumentCount();
+    }
+
+    /**
+     * The payment type that settles this request.
+     *
+     * Not cosmetic. An offsite fee is money the *notary* pays the platform, so
+     * it must never reach PayoutService::unpaidPayments(), which pays a share of
+     * every successful request_fee back to the notary on the request — and the
+     * notary on an offsite request is the person who just paid it. Keeping the
+     * two types apart is what stops the platform refunding its own fee.
+     */
+    public function feeType(): string
+    {
+        return $this->is_offsite ? 'offsite_fee' : 'request_fee';
+    }
+
+    /** A job the notary brought in themselves; the platform only seals it. */
+    public function isOffsite(): bool
+    {
+        return (bool) $this->is_offsite;
     }
 
     /** The full fee, formatted — e.g. "₦45,000.00". */
@@ -291,7 +318,7 @@ class NotarizationRequest extends Model
     public function amountPaidMinor(): int
     {
         return (int) $this->payments()
-            ->where('type', 'request_fee')
+            ->where('type', $this->feeType())
             ->where('status', 'successful')
             ->sum('amount');
     }
@@ -318,7 +345,7 @@ class NotarizationRequest extends Model
      */
     public function isPriced(): bool
     {
-        return $this->service_id !== null;
+        return $this->service_id !== null || $this->unit_fee_minor !== null;
     }
 
     /**
@@ -330,6 +357,15 @@ class NotarizationRequest extends Model
      */
     public function awaitingPayment(): bool
     {
+        // The mirror of the exclusion in scopeUnpaid(). This question is only
+        // ever asked in order to chase somebody, and the unpaid party on an
+        // offsite job is the notary buying their own sealing — who needs no
+        // chasing, and would be sent a "complete your booking" message about a
+        // client that does not exist.
+        if ($this->is_offsite) {
+            return false;
+        }
+
         if (! in_array($this->status, [RequestStatus::Draft, RequestStatus::Submitted], true)) {
             return false;
         }
@@ -363,7 +399,31 @@ class NotarizationRequest extends Model
      */
     public function scopeUnpaid($query)
     {
-        return $query->whereIn('status', [RequestStatus::Draft->value, RequestStatus::Submitted->value]);
+        // Offsite is excluded here rather than at every call site because every
+        // caller of this scope is chasing a client who has not paid, and the
+        // unpaid party on an offsite job is a notary paying for their own
+        // sealing. Nobody should send them a "complete your booking" email.
+        return $query->where('is_offsite', false)
+                     ->whereIn('status', [RequestStatus::Draft->value, RequestStatus::Submitted->value]);
+    }
+
+    /** Offsite jobs only — a notary's own work, brought here to be sealed. */
+    public function scopeOffsite($query)
+    {
+        return $query->where('is_offsite', true);
+    }
+
+    /**
+     * Everything except offsite jobs: the marketplace, in other words.
+     *
+     * Applied to the desk queues, the overdue sweep and the admin's in-flight
+     * list. An offsite job has no client waiting, no response window and no
+     * notary to chase — it is a receipt and a file — so its presence in any of
+     * those lists is noise that pushes real work off the screen.
+     */
+    public function scopeMarketplace($query)
+    {
+        return $query->where('is_offsite', false);
     }
 
     /** The outstanding balance, formatted. */
@@ -400,7 +460,8 @@ class NotarizationRequest extends Model
      */
     public function scopeOverdueForResponse($query)
     {
-        return $query->where('status', RequestStatus::Paid->value)
+        return $query->where('is_offsite', false)
+                     ->where('status', RequestStatus::Paid->value)
                      ->whereNotNull('fallback_due_at')
                      ->where('fallback_due_at', '<=', now())
                      ->whereNull('fallback_alerted_at');
@@ -415,7 +476,7 @@ class NotarizationRequest extends Model
      */
     public function scopeInFlight($query)
     {
-        return $query->whereIn('status', array_map(
+        return $query->where('is_offsite', false)->whereIn('status', array_map(
             fn (RequestStatus $s) => $s->value,
             RequestStatus::active(),
         ));
@@ -435,7 +496,11 @@ class NotarizationRequest extends Model
     {
         $profileId = $user->notaryProfile?->id;
 
-        return $query->where(function ($q) use ($profileId, $user) {
+        // An offsite job is assigned to the notary's own profile and would
+        // otherwise queue up under "awaiting your response" alongside real
+        // client work — with nobody waiting and no response to give. It has its
+        // own screen; see scopeOffsite().
+        return $query->where('is_offsite', false)->where(function ($q) use ($profileId, $user) {
             if ($profileId) {
                 $q->where('notary_id', $profileId);
             }

@@ -26,6 +26,21 @@ class NotarizeController extends Controller
     public function edit(NotarizationRequest $request): View|RedirectResponse
     {
         $this->authorizeNotarySide($request);
+
+        // Payment first, on an offsite job too.
+        //
+        // A marketplace request is payment-first by arrangement rather than by
+        // guard: the notary is not told about it and cannot reach it until the
+        // client's fee has cleared. An offsite job is the other way round — the
+        // notary creates the record themselves and owns it from the first
+        // moment — so without this they could upload, open the editor and seal
+        // without ever paying. This is the only thing the platform is selling
+        // here, so it is the one door that has to be locked.
+        if ($request->is_offsite && $request->status === RequestStatus::Draft) {
+            return redirect()->route('notary.offsite.show', $request)
+                ->withErrors(['offsite' => 'Pay the sealing fee first — the editor opens the moment it clears.']);
+        }
+
         $this->recordTakeOver($request);
 
         $documents = $request->notarizableDocuments;
@@ -166,7 +181,21 @@ class NotarizeController extends Controller
         $this->authorizeNotarySide($request);
 
         $session = $request->session;
-        abort_unless($session, 404);
+
+        // An offsite job has no session, and must not be given one. A session
+        // means a verification call took place on this platform; the notary met
+        // this person themselves, off this platform, which is the entire point.
+        // Manufacturing a session row would write a meeting that never happened
+        // into the calendar and into the verification record.
+        abort_unless($session || $request->is_offsite, 404);
+
+        // The same payment gate as edit(), because finalize is a POST and a
+        // stale form or a hand-made request would otherwise reach the sealer
+        // without passing the editor.
+        if ($request->is_offsite && $request->status === RequestStatus::Draft) {
+            return redirect()->route('notary.offsite.show', $request)
+                ->withErrors(['offsite' => 'Pay the sealing fee first — the editor opens the moment it clears.']);
+        }
 
         // Guard: the category is under query, or was corrected upwards and the
         // difference has not arrived. Placements can go on — losing that work
@@ -200,7 +229,12 @@ class NotarizeController extends Controller
 
         // Auto-create a verification record if the notary went straight to notarize
         // without a live call — treated as "uploaded_id" method.
-        if (! $session->identity_verified) {
+        //
+        // Skipped entirely for an offsite job. There is no session to hang the
+        // record on, and "uploaded_id" would be a false statement about how
+        // identity was checked: nobody uploaded an ID here, the notary saw the
+        // person. The platform has no evidence of that and should not pretend to.
+        if ($session && ! $session->identity_verified) {
             $idDoc = $request->documents()->where('file_type', 'identification')->first();
             \App\Models\VerificationRecord::updateOrCreate(
                 ['session_id' => $session->id],
@@ -230,8 +264,7 @@ class NotarizeController extends Controller
             return back()->withErrors(['document' => $e->getMessage()]);
         }
 
-        $session = $request->session;
-        $session->update(['status' => 'completed', 'actual_end_at' => now()]);
+        $request->session?->update(['status' => 'completed', 'actual_end_at' => now()]);
 
         $request->update([
             'status'       => RequestStatus::Completed,
@@ -240,7 +273,19 @@ class NotarizeController extends Controller
 
         AuditLogger::record('request.completed', 'notarization_request', $request->id, [
             'final_document_ids' => $finals->pluck('id')->all(),
+            'offsite'            => $request->is_offsite,
         ], Auth::id());
+
+        // An offsite job ends here, on the notary's own screen. There is no
+        // client account to notify — client_id points at the notary themselves
+        // — and the sealed file is theirs to download and hand over however
+        // they took the job on in the first place.
+        if ($request->is_offsite) {
+            return redirect()->route('notary.offsite.show', $request)
+                ->with('status', $finals->count() > 1
+                    ? 'Sealed — ' . $finals->count() . ' documents are ready to download.'
+                    : 'Sealed. Your document is ready to download.');
+        }
 
         $request->client->notify(new DocumentReadyNotification($request));
 
@@ -469,7 +514,11 @@ class NotarizeController extends Controller
 
         if ($request->handled_by !== null
             || ! $user->isAdmin()
-            || $user->id === $request->notary?->user_id) {
+            || $user->id === $request->notary?->user_id
+            // Nothing to take over on an offsite job. There is no client
+            // waiting, no clock running and no fallback to step into — the
+            // notary bought the sealing and is the only one meant to do it.
+            || $request->is_offsite) {
             return;
         }
 

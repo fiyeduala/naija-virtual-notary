@@ -24,7 +24,7 @@ class RevenueTrendChart extends ChartWidget
     protected function getData(): array
     {
         $payments = Payment::query()
-            ->where('type', 'request_fee')
+            ->whereIn('type', ['request_fee', 'offsite_fee'])
             ->where('status', 'successful')
             ->where('currency', 'NGN')
             ->whereNotNull('completed_at')
@@ -62,7 +62,7 @@ class RevenueTrendChart extends ChartWidget
     public function getDescription(): ?string
     {
         $total = Payment::query()
-            ->where('type', 'request_fee')
+            ->whereIn('type', ['request_fee', 'offsite_fee'])
             ->where('status', 'successful')
             ->where('currency', 'NGN')
             ->where('completed_at', '>=', now()->subDays(30)->startOfDay())
