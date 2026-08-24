@@ -1,15 +1,32 @@
-const CACHE = 'nvn-v1';
+const CACHE = 'nvn-v2';
 
-// Static assets to pre-cache on install
+/* Offline fallbacks. Two rules, learned the hard way:
+
+   1. Every entry must actually exist. `/css/theme.css` and `/manifest.json`
+      were listed here and neither is a real URL — the stylesheet is inlined in
+      the layouts, and the manifest is a route at /manifest.webmanifest. A 404
+      in this list is not a missing file, it is a dead service worker.
+   2. Never use cache.addAll(): it rejects the whole batch if any one request
+      fails, the rejection propagates out of waitUntil, and the install fails.
+      An install that fails means no active worker, which means
+      navigator.serviceWorker.ready never resolves — so the Alerts bell never
+      un-hides, nobody can subscribe, and every web push silently reaches
+      nobody. That is exactly what happened, on every device, for months, with
+      no error anywhere on the server. Pre-caching is an optimisation; it must
+      never be able to take push down with it. */
 const PRECACHE = [
     '/',
-    '/css/theme.css',
-    '/manifest.json',
+    '/icons/icon-192.png',
 ];
 
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE).then(cache => cache.addAll(PRECACHE)).then(() => self.skipWaiting())
+        caches.open(CACHE)
+            .then(cache => Promise.all(
+                PRECACHE.map(url => cache.add(url).catch(() => {}))
+            ))
+            .catch(() => {})
+            .then(() => self.skipWaiting())
     );
 });
 

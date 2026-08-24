@@ -163,6 +163,13 @@ class PushCheck extends Command
      */
     private function checkSubscriptions(): int
     {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('push_subscriptions')) {
+            $this->error('  The push_subscriptions table does not exist — run: php artisan migrate --force');
+            $this->blocked = true;
+
+            return 0;
+        }
+
         $subs = PushSubscription::with('user')->latest('id')->get();
 
         if ($subs->isEmpty()) {
@@ -189,6 +196,21 @@ class PushCheck extends Command
                 $this->pushService($sub->endpoint),
                 $sub->created_at?->diffForHumans() ?? '',
             ));
+        }
+
+        // Admin alerts are the ones people notice missing, and they fan out to
+        // every admin — so "somebody is subscribed" is not the same answer as
+        // "an admin is subscribed", and only the second one silences the desk.
+        $adminIds = User::query()->admins()->pluck('id');
+        $adminSubs = $subs->whereIn('user_id', $adminIds)->count();
+
+        $this->newLine();
+        if ($adminSubs === 0) {
+            $this->warn('  No admin is subscribed — every admin alert has nowhere to go.');
+            $this->line('  Sign in as an admin, tap the Alerts bell in the panel top bar, accept.');
+        } else {
+            $this->info('  ' . $adminSubs . ' admin device' . ($adminSubs === 1 ? '' : 's')
+                . ' will receive admin alerts.');
         }
 
         // Every device is its own subscription. Someone who "has it on both"

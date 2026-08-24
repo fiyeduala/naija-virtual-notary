@@ -57,9 +57,13 @@
     if (!btn || btn.dataset.wired) return;
     btn.dataset.wired = '1';
 
-    const vapidKey = @json(config('nvn.vapid_public_key'));
+    const vapidKey = @json(trim((string) config('nvn.vapid_public_key')));
     const label    = btn.querySelector('.push-label');
     const csrf     = @json(csrf_token());
+
+    /* Only an admin can act on "the server has no signing keys", and only an
+       admin should be shown it. Everyone else just gets no bell. */
+    const isAdmin  = @json((bool) auth()->user()->isAdmin());
 
     const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
@@ -106,7 +110,7 @@
     }
 
     /* ---- Push opt-in ---- */
-    if (!vapidKey || !supported) return;
+    if (!supported) return;
 
     function show(text, on, disabled) {
         label.textContent = text;
@@ -114,6 +118,19 @@
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
         btn.disabled = !!disabled;
         btn.hidden = false;
+    }
+
+    /* No signing key means nobody can subscribe and nothing can be sent. This
+       used to leave the bell hidden, which is indistinguishable from working —
+       and is how push managed to reach nobody without anyone noticing. */
+    if (!vapidKey) {
+        if (isAdmin) {
+            show('Alerts off — server has no push keys', false, true);
+            btn.title = 'Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in the server .env '
+                      + '(php artisan nvn:vapid-keys), then php artisan config:cache. '
+                      + 'Until then nobody can turn alerts on.';
+        }
+        return;
     }
 
     if (isIOS && !standalone) {
@@ -149,7 +166,7 @@
         const sub = await reg.pushManager.getSubscription()
             || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToArray(vapidKey) });
 
-        await fetch(@json(route('push.subscribe')), {
+        const saved = await fetch(@json(route('push.subscribe')), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
             body: JSON.stringify({
@@ -158,6 +175,14 @@
                 auth:     encode(sub.getKey('auth')),
             }),
         });
+
+        /* The browser is now subscribed whatever the server said. If the server
+           did not store it, saying "Alerts on" would be a lie that lasts
+           forever — the browser never asks again and nothing is ever sent. */
+        if (!saved.ok) {
+            show('Could not save alerts — try again', false, false);
+            return;
+        }
 
         show('Alerts on', true);
     }
@@ -186,9 +211,19 @@
             .finally(() => { if (btn.title !== 'Alerts unavailable') btn.disabled = false; });
     });
 
+    /* serviceWorker.ready never resolves and never rejects when the worker
+       failed to install — it simply hangs, and the bell stays hidden forever
+       with nothing on screen or in any log to say so. Cap the wait: a bell that
+       is offered and fails on click is diagnosable; one that never appears is
+       not. */
+    const readyOrGiveUp = Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('sw-timeout')), 5000)),
+    ]);
+
     /* Reflect what the browser already holds, so a re-subscribe is not offered
        to somebody who is already subscribed on this device. */
-    navigator.serviceWorker.ready
+    readyOrGiveUp
         .then((reg) => reg.pushManager.getSubscription())
         .then((sub) => show(sub && Notification.permission === 'granted' ? 'Alerts on' : 'Alerts',
                             !!sub && Notification.permission === 'granted'))
