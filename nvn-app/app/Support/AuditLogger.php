@@ -75,12 +75,19 @@ class AuditLogger
         ?array $metadata,
         string $createdAtIso,
         ?string $previousHash,
+        bool $normaliseIds = true,
     ): string {
+        $id = fn (int|string|null $value) => match (true) {
+            $value === null => null,
+            $normaliseIds   => (int) $value,
+            default         => $value,
+        };
+
         return json_encode([
-            'actor_user_id' => $actorUserId === null ? null : (int) $actorUserId,
+            'actor_user_id' => $id($actorUserId),
             'action'        => $action,
             'entity_type'   => $entityType,
-            'entity_id'     => $entityId === null ? null : (int) $entityId,
+            'entity_id'     => $id($entityId),
             'metadata'      => $metadata,
             'created_at'    => $createdAtIso,
             'previous_hash' => $previousHash,

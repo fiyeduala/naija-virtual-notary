@@ -36,6 +36,17 @@ class AuditCheck extends Command
     /** How far to sweep when asking which id would reproduce a hash. */
     private const ID_SEARCH_LIMIT = 500;
 
+    /**
+     * Whether the pass currently running spells the two id columns as numbers.
+     *
+     * The hash is taken over JSON, and JSON writes 2 and "2" differently. The
+     * writer normalises to numbers now, but a row hashed by an older build, or
+     * on a host whose driver handed ids back as text, would have been sealed
+     * over the text spelling — and no amount of searching for the right *value*
+     * will reproduce that hash while the search insists on the wrong *type*.
+     */
+    private bool $normaliseIds = true;
+
     public function handle(): int
     {
         $this->newLine();
@@ -201,6 +212,8 @@ class AuditCheck extends Command
 
         $now = [
             'actor'  => $row->actor_user_id === null ? null : (int) $row->actor_user_id,
+            'action' => (string) $row->action,
+            'type'   => $row->entity_type,
             'entity' => $row->entity_id === null ? null : (int) $row->entity_id,
             'meta'   => $row->metadata,
             'time'   => $row->created_at?->toIso8601String() ?? '',
@@ -213,8 +226,48 @@ class AuditCheck extends Command
             return;
         }
 
+        // The whole search runs once per spelling of the id columns. A row
+        // sealed over "2" cannot be reproduced by any search that writes 2, no
+        // matter how many values it tries, so the type is a dimension of its
+        // own rather than a detail of one.
+        foreach ([true, false] as $normalised) {
+            $this->normaliseIds = $normalised;
+
+            if ($this->searchAllShapes($row, $stored, $now, $previousHash)) {
+                return;
+            }
+        }
+
+        $this->normaliseIds = true;
+
+        $this->tamperReport($row, $now, $stored, $previousHash);
+    }
+
+    /**
+     * Every field alone, then every pair, under the spelling currently set.
+     *
+     * @param  array<string, mixed>  $now
+     */
+    private function searchAllShapes(AuditLog $row, string $stored, array $now, ?string $previousHash): bool
+    {
+        if (! $this->normaliseIds) {
+            $now['actor'] = $now['actor'] === null ? null : (string) $now['actor'];
+            $now['entity'] = $now['entity'] === null ? null : (string) $now['entity'];
+
+            // A row sealed under the other spelling fails even untouched, so
+            // the spelling alone is the finding and there is nothing else to
+            // look for.
+            if ($this->hash($row, $now) === $stored) {
+                $this->reportSpelling();
+
+                return true;
+            }
+        }
+
         $candidates = [
             'actor'  => $this->actorCandidates(),
+            'action' => $this->columnCandidates('action', 'the action was ', nullable: false),
+            'type'   => $this->columnCandidates('entity_type', 'the entity type was '),
             'entity' => $this->entityCandidates($row),
             'meta'   => $this->metadataCandidates($row),
             'time'   => $this->timeCandidates($row),
@@ -226,24 +279,39 @@ class AuditCheck extends Command
             if ($found = $this->sweep($row, $stored, $now, [$field => $values])) {
                 $this->report($found);
 
-                return;
+                return true;
             }
         }
 
         // Then pairs. Timestamps are in every pairing because the two events
         // that rewrite a whole table — a restored dump and a timezone change —
         // both move them, and both tend to arrive alongside something else.
-        foreach ([['time', 'actor'], ['time', 'meta'], ['time', 'entity'], ['time', 'prev'], ['actor', 'meta']] as $pair) {
-            [$a, $b] = $pair;
-
+        foreach ([
+            ['time', 'actor'], ['time', 'meta'], ['time', 'entity'], ['time', 'prev'],
+            ['time', 'action'], ['time', 'type'], ['actor', 'meta'], ['action', 'type'],
+            ['action', 'meta'], ['prev', 'actor'], ['prev', 'meta'], ['entity', 'type'],
+        ] as [$a, $b]) {
             if ($found = $this->sweep($row, $stored, $now, [$a => $candidates[$a], $b => $candidates[$b]])) {
                 $this->report($found);
 
-                return;
+                return true;
             }
         }
 
-        $this->tamperReport($row, $now, $stored, $previousHash);
+        return false;
+    }
+
+    private function reportSpelling(): void
+    {
+        $this->line('   <fg=green;options=bold>Found it.</> The row is untouched. Its hash was taken while the id');
+        $this->line('   columns were text and is being checked while they are numbers.');
+        $this->newLine();
+        $this->line('   The hash covers JSON, and JSON writes 2 and "2" differently. A host');
+        $this->line('   whose database driver hands ids back as strings seals rows over the');
+        $this->line('   text spelling; move the same rows somewhere that returns integers and');
+        $this->line('   every one of them fails while nothing in them has changed. Nobody');
+        $this->line('   edited anything — the rows predate the platform settling on one');
+        $this->line('   spelling, and only rows written before that can fail this way.');
     }
 
     /**
@@ -294,12 +362,13 @@ class AuditCheck extends Command
     {
         return hash('sha256', AuditLogger::payload(
             $values['actor'],
-            (string) $row->action,
-            $row->entity_type,
+            $values['action'],
+            $values['type'],
             $values['entity'],
             $values['meta'],
             $values['time'],
             $values['prev'],
+            $this->normaliseIds,
         ));
     }
 
@@ -318,7 +387,32 @@ class AuditCheck extends Command
         $out = ['nobody' => null];
 
         for ($id = 1; $id <= self::ID_SEARCH_LIMIT; $id++) {
-            $out['user #' . $id] = $id;
+            $out['user #' . $id] = $this->normaliseIds ? $id : (string) $id;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The values a text column has held anywhere in this table.
+     *
+     * Action names get renamed as a product changes — notary.listing_toggled
+     * became notary.listed and notary.unlisted when self-listing was removed —
+     * and a rename applied to old rows with an UPDATE would break exactly the
+     * rows that predate it, which is the shape of damage worth testing against.
+     * Every value the column has ever legitimately held is the search space.
+     *
+     * @return array<string, string|null>
+     */
+    private function columnCandidates(string $column, string $prefix, bool $nullable = true): array
+    {
+        $out = $nullable ? [$prefix . 'blank' => null] : [];
+        $out[$prefix . 'an empty string'] = '';
+
+        foreach (AuditLog::query()->distinct()->orderBy($column)->pluck($column) as $value) {
+            if ($value !== null) {
+                $out[$prefix . $value] = (string) $value;
+            }
         }
 
         return $out;
@@ -330,7 +424,7 @@ class AuditCheck extends Command
         $out = ['nothing' => null];
 
         for ($id = 1; $id <= self::ID_SEARCH_LIMIT; $id++) {
-            $out[($row->entity_type ?? 'record') . ' #' . $id] = $id;
+            $out[($row->entity_type ?? 'record') . ' #' . $id] = $this->normaliseIds ? $id : (string) $id;
         }
 
         return $out;
@@ -363,6 +457,21 @@ class AuditCheck extends Command
 
         /** @var array<string, string> $byIso keyed by the string, so each is tried once */
         $byIso = [];
+
+        // Small drifts first, and in seconds. A database engine that rounds a
+        // fractional second where the hash truncated it, a row copied between
+        // servers whose clocks disagreed, an import that re-derived the time
+        // from a date and lost the rest — none of those move an hour, and a
+        // sweep that starts at fifteen minutes steps straight over all of them.
+        foreach ([...range(-120, 120), ...range(-31 * 86400, 31 * 86400, 86400)] as $seconds) {
+            if ($seconds === 0) {
+                continue;
+            }
+
+            $byIso[$at->addSeconds($seconds)->toIso8601String()] ??= abs($seconds) <= 120
+                ? 'the moment was ' . ($seconds > 0 ? '+' : '−') . abs($seconds) . 's from what it reads'
+                : 'the moment was ' . ($seconds > 0 ? '+' : '−') . abs(intdiv($seconds, 86400)) . ' days from what it reads';
+        }
 
         for ($minutes = -14 * 60; $minutes <= 14 * 60; $minutes += 15) {
             if ($minutes === 0) {
@@ -486,10 +595,22 @@ class AuditCheck extends Command
      */
     private function previousHashCandidates(AuditLog $row, ?string $previousHash): array
     {
-        $out = ['there was no row before it' => null];
+        $out = [
+            'there was no row before it' => null,
+            'the link was an empty string' => '',
+        ];
 
         if ($row->previous_hash !== null && $row->previous_hash !== $previousHash) {
             $out['the row it names, not the row that precedes it'] = $row->previous_hash;
+        }
+
+        // Any other row's hash. If this row was chained to a different entry
+        // than the one that sits before it now, something was inserted between
+        // them or removed from between them, and the search says which.
+        foreach (AuditLog::where('id', '!=', $row->id)->orderBy('id')->pluck('content_hash', 'id') as $id => $hash) {
+            if ($hash !== null && $hash !== $previousHash) {
+                $out['it followed entry #' . $id] = $hash;
+            }
         }
 
         return $out;
@@ -503,6 +624,8 @@ class AuditCheck extends Command
     {
         $names = [
             'actor'  => 'the actor',
+            'action' => 'the action name',
+            'type'   => 'the entity type',
             'entity' => 'the record it points at',
             'meta'   => 'the metadata',
             'time'   => 'the timestamp',
@@ -568,12 +691,21 @@ class AuditCheck extends Command
     {
         $this->error('   No ordinary explanation reproduces this row\'s hash.');
         $this->newLine();
-        $this->line('   Ruled out: the timestamp has not moved and is not being read in a');
-        $this->line('   different timezone, the actor and the record id have not been changed');
-        $this->line('   or nulled, no earlier rows are missing, and the metadata is the shape');
-        $this->line('   it was stored in — alone or in pairs. What is left is that this row\'s');
-        $this->line('   contents were altered after it was written, and the hash is doing the');
-        $this->line('   job it exists for.');
+        $this->line('   Ruled out, alone and in pairs: the timestamp has not moved by seconds,');
+        $this->line('   hours or days and is not being read in a different timezone; the actor');
+        $this->line('   and the record id have not been changed or nulled; the action name and');
+        $this->line('   entity type are not values this table has ever used elsewhere; the row');
+        $this->line('   was not chained to a different entry; and the ids were not sealed as');
+        $this->line('   text. So this row\'s contents were altered after it was written, and');
+        $this->line('   the hash is doing the job it exists for.');
+        $this->newLine();
+        $this->line('   The one thing that cannot be ruled out is the metadata. Every other');
+        $this->line('   field is searched over values that still exist somewhere in this table,');
+        $this->line('   so an old one can be recovered and named. Metadata is free-form: the');
+        $this->line('   search can reshuffle and retype the keys this row still carries, but');
+        $this->line('   nothing can reconstruct a key it no longer has. If this row was edited,');
+        $this->line('   the metadata is where to look, and the old value is not recoverable');
+        $this->line('   from here — only from a backup taken before the change.');
         $this->newLine();
         $this->line('   Stored hash    ' . $stored);
         $this->line('   Recomputed     ' . $this->hash($row, $now));
