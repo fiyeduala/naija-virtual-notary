@@ -44,13 +44,20 @@ class OffsiteNotarizationService
     /**
      * Start a job: create the record, store the documents, freeze the price.
      *
+     * $creator is whoever is bringing the job in, and becomes client_id. Usually
+     * that is the notary themselves. When an admin places a job on a partner's
+     * behalf — a client who walked into the office and paid the platform
+     * directly — it is the admin: they took the money and they hand the file
+     * over, so they are the customer side of this record even though the seal
+     * that goes on it is $profile's.
+     *
      * @param  array<int, UploadedFile>  $files
      */
-    public function create(NotaryProfile $profile, User $notaryUser, string $describedAs, array $files): NotarizationRequest
+    public function create(NotaryProfile $profile, User $creator, string $describedAs, array $files): NotarizationRequest
     {
-        return DB::transaction(function () use ($profile, $notaryUser, $describedAs, $files) {
+        return DB::transaction(function () use ($profile, $creator, $describedAs, $files) {
             $request = NotarizationRequest::create([
-                'client_id'      => $notaryUser->id,
+                'client_id'      => $creator->id,
                 'notary_id'      => $profile->id,
                 'service_id'     => null,
                 'status'         => RequestStatus::Draft,
@@ -67,7 +74,7 @@ class OffsiteNotarizationService
 
                 RequestDocument::create([
                     'request_id'        => $request->id,
-                    'uploaded_by'       => $notaryUser->id,
+                    'uploaded_by'       => $creator->id,
                     'file_url'          => $path,
                     'original_filename' => $file->getClientOriginalName(),
                     'file_hash_sha256'  => hash_file('sha256', $file->getRealPath()),
@@ -83,7 +90,8 @@ class OffsiteNotarizationService
                 'documents'      => count($files),
                 'unit_fee_minor' => $request->unit_fee_minor,
                 'notary_id'      => $profile->id,
-            ], $notaryUser->id);
+                'placed_by'      => $creator->id,
+            ], $creator->id);
 
             return $request->refresh();
         });
@@ -265,5 +273,42 @@ class OffsiteNotarizationService
         }
 
         return null;
+    }
+
+    /**
+     * Why an admin cannot place an offsite job, or null when they can.
+     *
+     * Deliberately not blockedReason() on the admin's own profile: an admin
+     * places jobs under whichever notary's seal belongs on the document, so
+     * their own marks being incomplete stops nothing. The only real blocker is
+     * there being nobody at all to seal in the name of.
+     */
+    public function adminBlockedReason(): ?string
+    {
+        return $this->sealableProfiles()->isEmpty()
+            ? 'No notary on the platform has an e-signature, stamp and seal all on file yet — '
+                . 'there would be nothing to place on the document.'
+            : null;
+    }
+
+    /**
+     * The notaries an admin may place a job under, named and sorted.
+     *
+     * Approved and able to seal, and nothing else — public listing and
+     * membership are as irrelevant here as they are in blockedReason(). A
+     * partner who has stopped taking marketplace bookings can still have work
+     * sealed in their name, because they did the notarizing.
+     *
+     * @return \Illuminate\Support\Collection<int, NotaryProfile>
+     */
+    public function sealableProfiles(): \Illuminate\Support\Collection
+    {
+        return NotaryProfile::query()
+            ->where('verification_status', 'approved')
+            ->with(['user:id,full_name,email', 'assets'])
+            ->get()
+            ->filter(fn (NotaryProfile $p) => $p->canSeal() && $p->user !== null)
+            ->sortBy(fn (NotaryProfile $p) => mb_strtolower((string) $p->user->full_name))
+            ->values();
     }
 }

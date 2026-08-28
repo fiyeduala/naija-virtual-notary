@@ -4,6 +4,13 @@
     $isDraft  = $request->status === \App\Enums\RequestStatus::Draft;
     $finals   = $request->finalDocuments;
     $docs     = $request->notarizableDocuments;
+    // What this job is worth, said honestly in both worlds: on a notary's job
+    // that is the platform's fee they paid, on an admin's job it is what the
+    // client handed over at the desk, which no fee table knows about.
+    $paidMinor = $request->amountPaidMinor();
+    $settled   = $paidMinor > 0
+        ? \App\Models\NotarizationRequest::money($paidMinor, $request->currency ?: 'NGN')
+        : $request->displayFee();
 @endphp
 
 @section('content')
@@ -28,7 +35,12 @@
                 <span class="text-sm muted">Finished {{ $request->completed_at?->diffForHumans() }}</span>
             </div>
             <p class="text-sm" style="margin-bottom:14px;">
-                Your marks are on {{ $finals->count() === 1 ? 'the document' : 'all ' . $finals->count() . ' documents' }}.
+                @if ($isAdmin)
+                    {{ $request->notary?->user?->full_name ?? 'The notary' }}&rsquo;s marks are on
+                @else
+                    Your marks are on
+                @endif
+                {{ $finals->count() === 1 ? 'the document' : 'all ' . $finals->count() . ' documents' }}.
                 Download {{ $finals->count() === 1 ? 'it' : 'them' }} as many times as you need —
                 {{ $finals->count() === 1 ? 'this file stays' : 'these files stay' }} here.
             </p>
@@ -39,6 +51,79 @@
                 {{ $final->original_filename ?: 'Sealed document ' . $loop->iteration }}
             </a>
             @endforeach
+
+        @elseif ($isDraft && $isAdmin)
+            {{-- The admin's own version of the payment step. No checkout: the
+                 client paid the desk directly, so the only thing left to do is
+                 write down what arrived. The figure is theirs, not the fee
+                 table's — this is real revenue and it belongs on the books at
+                 its true size. --}}
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                <span class="pill pill-pending">Not opened yet</span>
+                <span class="text-sm muted">
+                    {{ $docs->count() }} {{ \Illuminate\Support\Str::plural('document', $docs->count()) }}
+                    · sealed by {{ $request->notary?->user?->full_name ?? 'unassigned' }}
+                </span>
+            </div>
+
+            @if ($blocked)
+                <div class="alert alert-error" style="display:flex; gap:10px; align-items:flex-start;">
+                    <x-heroicon-o-exclamation-triangle style="width:18px;height:18px;flex:none;margin-top:1px;"/>
+                    <div>{{ $blocked }}</div>
+                </div>
+            @else
+                <p class="text-sm" style="margin-bottom:16px;">
+                    Record what was paid, and the job opens for sealing. It goes on the books as
+                    platform revenue — none of it is owed to a notary, so nothing here reaches a
+                    payout.
+                </p>
+
+                <form method="POST" action="{{ route('notary.offsite.record', $request) }}">
+                    @csrf
+
+                    <label for="amount_major" style="margin-bottom:8px;">How much was paid?</label>
+                    <input id="amount_major" type="number" name="amount_major" step="0.01" min="0" required
+                           value="{{ old('amount_major') }}" placeholder="0.00" style="max-width:220px;">
+                    <div class="text-sm muted" style="margin-top:6px;">
+                        In {{ $request->currency ?: 'NGN' }}, and the real figure. For a client who
+                        paid the desk directly that is what they handed over for the notarization,
+                        not the platform's {{ $unitFee }} per-document fee. For a partner settling
+                        their own sealing fee by transfer, it is that fee. Enter 0 to open the job
+                        without recording money.
+                    </div>
+
+                    <label for="method" style="margin-bottom:8px; margin-top:20px;">How did it arrive?</label>
+                    <select id="method" name="method" required style="max-width:320px;">
+                        @foreach ($methods as $value => $label)
+                        <option value="{{ $value }}" @selected(old('method', 'bank_transfer') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+
+                    <label for="received_at" style="margin-bottom:8px; margin-top:20px;">When did it arrive?</label>
+                    <input id="received_at" type="datetime-local" name="received_at" style="max-width:260px;"
+                           max="{{ now()->format('Y-m-d\TH:i') }}"
+                           value="{{ old('received_at', now()->format('Y-m-d\TH:i')) }}">
+                    <div class="text-sm muted" style="margin-top:6px;">
+                        Not necessarily today. This is the date the payment counts from.
+                    </div>
+
+                    <label for="reference" style="margin-bottom:8px; margin-top:20px;">Their reference</label>
+                    <input id="reference" type="text" name="reference" maxlength="255"
+                           value="{{ old('reference') }}"
+                           placeholder="Transfer session ID, teller number, POS slip">
+                    <div class="text-sm muted" style="margin-top:6px;">
+                        Optional, but it is how you match this to the bank statement later.
+                    </div>
+
+                    <label for="note" style="margin-bottom:8px; margin-top:20px;">Note</label>
+                    <textarea id="note" name="note" rows="2" maxlength="1000"
+                              placeholder="Who the client was, which account it landed in, anything unusual">{{ old('note') }}</textarea>
+
+                    <button type="submit" class="btn btn-lg" style="margin-top:20px;">
+                        Record it and open the job
+                    </button>
+                </form>
+            @endif
 
         @elseif ($isDraft)
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
@@ -76,11 +161,16 @@
 
         @else
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-                <span class="pill pill-approved">Paid</span>
-                <span class="text-sm muted">{{ $request->displayFee() }} · {{ $request->paid_at?->diffForHumans() }}</span>
+                <span class="pill pill-approved">{{ $isAdmin ? 'Open' : 'Paid' }}</span>
+                <span class="text-sm muted">{{ $settled }} · {{ $request->paid_at?->diffForHumans() }}</span>
             </div>
             <p class="text-sm" style="margin-bottom:14px;">
-                Place your signature, stamp and seal on
+                @if ($isAdmin)
+                    Place {{ $request->notary?->user?->full_name ?? 'the notary' }}&rsquo;s signature, stamp and
+                    seal on
+                @else
+                    Place your signature, stamp and seal on
+                @endif
                 {{ $docs->count() === 1 ? 'the document' : 'each of the ' . $docs->count() . ' documents' }},
                 then finalize. Nothing is charged again.
             </p>

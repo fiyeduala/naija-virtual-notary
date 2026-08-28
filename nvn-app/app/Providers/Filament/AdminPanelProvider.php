@@ -74,7 +74,19 @@ class AdminPanelProvider extends PanelProvider
                     ->icon('heroicon-o-pencil-square')
                     ->group('Requests & sessions')
                     ->sort(0)
-                    ->isActiveWhen(fn () => request()->routeIs('notary.*')),
+                    ->isActiveWhen(fn () => request()->routeIs('notary.*')
+                        && ! request()->routeIs('notary.offsite.*')),
+
+                // Offsite work has no marketplace request behind it and appears
+                // in no queue on the desk, so without a link of its own an admin
+                // has no way to reach it — the only other entrance is a notary's
+                // dashboard, and admins work in here.
+                NavigationItem::make('Offsite notarization')
+                    ->url(fn () => route('notary.offsite.index'))
+                    ->icon('heroicon-o-briefcase')
+                    ->group('Requests & sessions')
+                    ->sort(1)
+                    ->isActiveWhen(fn () => request()->routeIs('notary.offsite.*')),
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -28,6 +28,25 @@
             the job in your list later.
         </div>
 
+        @if ($isAdmin)
+        {{-- Only an admin is ever asked this. A notary has exactly one answer —
+             their own profile — and being made to pick it would only imply they
+             could place work under somebody else's marks, which they cannot. --}}
+        <label for="notary_id" style="margin-bottom:8px; margin-top:22px;">Whose marks go on it?</label>
+        <select id="notary_id" name="notary_id" required>
+            @foreach ($notaries as $n)
+            <option value="{{ $n->id }}" @selected((int) old('notary_id', $ownNotary) === $n->id)>
+                {{ $n->user->full_name }}@if ($n->id === $ownNotary) — the platform's own notary @endif
+            </option>
+            @endforeach
+        </select>
+        <div class="text-sm muted" style="margin-top:6px;">
+            The signature, stamp and seal placed on the document are this notary's, and stay
+            theirs. Pick yourself for work the desk took on; pick a partner for a job they did
+            offsite and sent in for sealing.
+        </div>
+        @endif
+
         <label style="margin-bottom:8px; margin-top:22px;">Documents to notarize</label>
         <div class="upload-zone" id="zone-documents">
             <input id="documents" type="file" name="documents[]" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
@@ -45,10 +64,15 @@
         <div class="alert" style="margin-top:22px; background:var(--warning-bg); border-color:var(--warning); display:flex; gap:10px; align-items:flex-start;">
             <x-heroicon-o-information-circle style="width:18px;height:18px;flex:none;margin-top:1px;"/>
             <div class="text-sm">
-                <strong>{{ $fee }} per document.</strong>
-                @if ($feeMinor === 0)
+                @if ($isAdmin)
+                    <strong>Nothing is charged here.</strong>
+                    On the next screen you write down what the client actually paid you —
+                    cash, transfer, however it arrived — and the job opens for sealing.
+                @elseif ($feeMinor === 0)
+                    <strong>{{ $fee }} per document.</strong>
                     Offsite sealing is free at the moment, so nothing will be charged.
                 @else
+                    <strong>{{ $fee }} per document.</strong>
                     Charged once, on this screen's next step, before the editor opens.
                     Whatever you charged your own client is yours — the platform takes no share of it.
                 @endif

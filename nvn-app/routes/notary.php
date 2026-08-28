@@ -50,9 +50,11 @@ Route::middleware(['auth', 'verified.otp', 'role:notary'])->group(function () {
 });
 
 // Offsite notarization — a job the notary took on themselves, brought here only
-// to be sealed. Admin is included because they hold the platform's own notary
-// profile and may seal offsite work the same way; every route below scopes to
-// the signed-in notary's own profile, so nobody sees anybody else's jobs.
+// to be sealed. A notary sees only their own; every route below scopes to the
+// signed-in notary's profile. Admin is included and is the exception: they hold
+// the platform's own notary profile, take offsite work themselves when a client
+// pays the desk directly, and may place a job under a partner's seal — so they
+// see all of it. See OffsiteNotarizationController::authorizeOffsiteOwner().
 Route::middleware(['auth', 'verified.otp', 'role:notary,admin'])->group(function () {
     Route::get('/notary/offsite', [OffsiteNotarizationController::class, 'index'])->name('notary.offsite.index');
     // Before the {request} route, or "new" is read as an id.
@@ -63,6 +65,9 @@ Route::middleware(['auth', 'verified.otp', 'role:notary,admin'])->group(function
     Route::post('/notary/offsite/{request}/documents', [OffsiteNotarizationController::class, 'addDocuments'])->name('notary.offsite.documents.add');
     Route::delete('/notary/offsite/{request}/documents/{document}', [OffsiteNotarizationController::class, 'removeDocument'])->name('notary.offsite.documents.remove');
     Route::post('/notary/offsite/{request}/pay', [OffsiteNotarizationController::class, 'pay'])->name('notary.offsite.pay');
+    // Admin only, enforced in the controller: money that arrived outside
+    // Paystack because the client paid the platform directly.
+    Route::post('/notary/offsite/{request}/record', [OffsiteNotarizationController::class, 'record'])->name('notary.offsite.record');
     Route::get('/notary/offsite/{request}/callback', [OffsiteNotarizationController::class, 'callback'])->name('notary.offsite.callback');
 });
 

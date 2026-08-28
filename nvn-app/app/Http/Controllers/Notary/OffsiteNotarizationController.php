@@ -8,8 +8,10 @@ use App\Models\NotarizationRequest;
 use App\Models\NotaryProfile;
 use App\Models\Payment;
 use App\Models\RequestDocument;
+use App\Services\OfflinePaymentService;
 use App\Services\OffsiteNotarizationService;
 use App\Services\PaystackService;
+use App\Support\SettlementMethod;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,6 +26,16 @@ use Illuminate\View\View;
  * Everything here belongs to the notary who is signed in: they upload, they
  * pay, they seal, they download. No client ever sees these screens and no
  * marketplace queue lists these jobs — see NotarizationRequest::scopeMarketplace().
+ *
+ * An admin works the same screens with two differences, because the platform
+ * itself takes offsite work: they see every offsite job rather than only their
+ * own, and they choose which notary's seal goes on a job they place — their own
+ * or a partner's, for a partner who took a job outside and sent it in. They
+ * also never see Paystack here. A client who paid the platform directly has
+ * already paid; sending an admin to a checkout to move the platform's own money
+ * to the platform would cost a card fee and record a fiction. Instead the admin
+ * records what the client actually handed over, which is the same offline
+ * settlement path the payments screen uses.
  */
 class OffsiteNotarizationController extends Controller
 {
@@ -32,24 +44,34 @@ class OffsiteNotarizationController extends Controller
         private PaystackService $paystack,
     ) {}
 
-    /** Every offsite job this notary has started, newest first. */
+    /**
+     * Offsite jobs, newest first — this notary's, or all of them for an admin.
+     *
+     * An admin has to see everybody's: they place jobs under partners' seals and
+     * record money against jobs partners started, and neither is possible from a
+     * list scoped to their own profile.
+     */
     public function index(): View
     {
+        $admin   = $this->isAdmin();
         $profile = $this->profile();
 
-        $jobs = $profile
-            ? NotarizationRequest::offsite()
-                ->where('notary_id', $profile->id)
-                ->withCount('notarizableDocuments')
-                ->with('finalDocuments')
-                ->latest('id')
-                ->paginate(15)
-            : NotarizationRequest::whereRaw('1 = 0')->paginate(15);
+        $query = NotarizationRequest::offsite()
+            ->withCount('notarizableDocuments')
+            ->with(['finalDocuments', 'notary.user:id,full_name'])
+            ->latest('id');
+
+        if (! $admin) {
+            $query = $profile
+                ? $query->where('notary_id', $profile->id)
+                : $query->whereRaw('1 = 0');
+        }
 
         return view('notary.offsite.index', [
-            'jobs'    => $jobs,
+            'jobs'    => $query->paginate(15),
             'profile' => $profile,
-            'blocked' => $this->offsite->blockedReason($profile),
+            'isAdmin' => $admin,
+            'blocked' => $admin ? $this->offsite->adminBlockedReason() : $this->offsite->blockedReason($profile),
             'fee'     => Settings::offsiteFeeDisplay(),
         ]);
     }
@@ -57,23 +79,23 @@ class OffsiteNotarizationController extends Controller
     /** The upload form. */
     public function create(): View|RedirectResponse
     {
-        $profile = $this->profile();
-
-        if ($reason = $this->offsite->blockedReason($profile)) {
+        if ($reason = $this->blockedForPlacing()) {
             return redirect()->route('notary.offsite.index')->withErrors(['offsite' => $reason]);
         }
 
         return view('notary.offsite.create', [
-            'feeMinor' => Settings::offsiteFeeMinor(),
-            'fee'      => Settings::offsiteFeeDisplay(),
+            'feeMinor'  => Settings::offsiteFeeMinor(),
+            'fee'       => Settings::offsiteFeeDisplay(),
+            'isAdmin'   => $this->isAdmin(),
+            // Only an admin picks; a notary's own profile is the only answer.
+            'notaries'  => $this->isAdmin() ? $this->offsite->sealableProfiles() : collect(),
+            'ownNotary' => $this->profile()?->id,
         ]);
     }
 
     public function store(Request $http): RedirectResponse
     {
-        $profile = $this->profile();
-
-        if ($reason = $this->offsite->blockedReason($profile)) {
+        if ($reason = $this->blockedForPlacing()) {
             return redirect()->route('notary.offsite.index')->withErrors(['offsite' => $reason]);
         }
 
@@ -85,6 +107,24 @@ class OffsiteNotarizationController extends Controller
             'described_as.required' => 'Say in a line what this is, so you can tell it apart later.',
             'documents.required'    => 'Attach at least one document to notarize.',
         ]);
+
+        $profile = $this->placingProfile($http);
+
+        if (! $profile) {
+            return back()->withInput()->withErrors([
+                'notary_id' => 'Choose the notary whose signature, stamp and seal go on this.',
+            ]);
+        }
+
+        // Checked again on the chosen profile rather than trusted from the
+        // picker: the options were built a page load ago, and an approval can
+        // be withdrawn or an asset deleted in between.
+        if ($reason = $this->offsite->blockedReason($profile)) {
+            return back()->withInput()->withErrors(['notary_id' => $this->isAdmin()
+                ? ($profile->user?->full_name ?? 'That notary') . ' cannot be sealed for right now — '
+                    . 'their approval or their three marks are no longer both in place. Pick another notary.'
+                : $reason]);
+        }
 
         $request = $this->offsite->create(
             $profile,
@@ -108,6 +148,8 @@ class OffsiteNotarizationController extends Controller
             'blocked'  => $this->offsite->blockedReason($request->notary),
             'unitFee'  => NotarizationRequest::money((int) $request->unit_fee_minor, $request->currency ?: 'NGN'),
             'balance'  => $request->balanceMinor(),
+            'isAdmin'  => $this->isAdmin(),
+            'methods'  => SettlementMethod::OPTIONS,
         ]);
     }
 
@@ -159,6 +201,10 @@ class OffsiteNotarizationController extends Controller
     {
         $this->authorizeOffsiteOwner($request);
 
+        // An admin never checks out. The money on their jobs arrived outside
+        // Paystack by definition, and record() is where it is written down.
+        abort_if($this->isAdmin(), 403);
+
         if ($reason = $this->offsite->blockedReason($request->notary)) {
             return back()->withErrors(['offsite' => $reason]);
         }
@@ -198,6 +244,66 @@ class OffsiteNotarizationController extends Controller
         }
 
         return redirect()->away($init['authorization_url']);
+    }
+
+    /**
+     * Admin only: write down what the client paid, and open the job.
+     *
+     * The figure asked for here is the real one — what the walk-in actually
+     * handed over for the notarization — not the platform's per-document fee.
+     * On an admin job there is no partner to pay us: the platform did the
+     * collecting, so the whole amount is platform revenue and belongs on the
+     * books at its true size. It is written as an 'offsite_fee' payment by
+     * OfflinePaymentService, which keeps it out of scopePayable() and out of
+     * the payout run — nothing here is owed to anybody.
+     *
+     * Zero is allowed and means exactly what it says: open the job, record no
+     * money. A favour, a re-do, a fee waived.
+     */
+    public function record(NotarizationRequest $request, Request $http, OfflinePaymentService $offline): RedirectResponse
+    {
+        $this->authorizeOffsiteOwner($request);
+        abort_unless($this->isAdmin(), 403);
+        $this->authorizeUnpaid($request);
+
+        if ($reason = $this->offsite->blockedReason($request->notary)) {
+            return back()->withErrors(['offsite' => $reason]);
+        }
+
+        $data = $http->validate([
+            'amount_major' => ['required', 'numeric', 'min:0', 'max:100000000'],
+            'method'       => ['required', 'string', 'in:' . implode(',', array_keys(SettlementMethod::OPTIONS))],
+            'received_at'  => ['nullable', 'date', 'before_or_equal:now'],
+            'reference'    => ['nullable', 'string', 'max:255'],
+            'note'         => ['nullable', 'string', 'max:1000'],
+        ], [
+            'amount_major.required' => 'Say what the client paid. Enter 0 if nothing was charged.',
+            'received_at.before_or_equal' => 'Money cannot have arrived in the future.',
+        ]);
+
+        $amount = (int) round(((float) $data['amount_major']) * 100);
+
+        if ($amount <= 0) {
+            $this->offsite->markPaid($request);
+
+            return redirect()->route('notary.offsite.show', $request)
+                ->with('status', 'Opened with nothing recorded. Place the marks whenever you are ready.');
+        }
+
+        $payment = $offline->recordRequestFee($request, [
+            'amount'      => $amount,
+            'method'      => $data['method'],
+            'reference'   => $data['reference'] ?? null,
+            'note'        => $data['note'] ?? null,
+            'received_at' => $data['received_at'] ?? now(),
+        ], Auth::id());
+
+        return redirect()->route('notary.offsite.show', $request)->with(
+            'status',
+            NotarizationRequest::money((int) $payment->amount, $payment->currency)
+                . ' recorded as ' . SettlementMethod::label($payment->settlement_method)
+                . '. The job is open — place the marks and finalize.',
+        );
     }
 
     /** Paystack redirect-back. Verify for instant feedback; the webhook is authoritative. */
@@ -244,16 +350,61 @@ class OffsiteNotarizationController extends Controller
         return Auth::user()->notaryProfile;
     }
 
+    private function isAdmin(): bool
+    {
+        return (bool) Auth::user()?->isAdmin();
+    }
+
+    /**
+     * Whether this user can place an offsite job at all, and why not.
+     *
+     * A notary is asking about themselves. An admin is asking whether there is
+     * anyone to seal in the name of, since they place jobs under other people's
+     * profiles as well as their own.
+     */
+    private function blockedForPlacing(): ?string
+    {
+        return $this->isAdmin()
+            ? $this->offsite->adminBlockedReason()
+            : $this->offsite->blockedReason($this->profile());
+    }
+
+    /**
+     * Which notary's marks go on a job being placed.
+     *
+     * A notary never chooses — it is their own profile or nothing. An admin
+     * chooses, defaulting to the platform's own profile, and the id is resolved
+     * against the sealable set rather than looked up directly so the form
+     * cannot be edited into placing a job under an unapproved notary.
+     */
+    private function placingProfile(Request $http): ?NotaryProfile
+    {
+        if (! $this->isAdmin()) {
+            return $this->profile();
+        }
+
+        $chosen = (int) $http->input('notary_id');
+
+        return $chosen
+            ? $this->offsite->sealableProfiles()->firstWhere('id', $chosen)
+            : $this->profile();
+    }
+
     /**
      * This job, and this notary.
      *
-     * Admins pass because they run the platform's own notary desk and hold a
-     * profile of their own; the profile check below is what actually decides
-     * it for them, so an admin sees their own offsite jobs and not everybody's.
+     * An admin passes for any offsite job: they run the platform's own notary
+     * desk, they place work under partners' seals, and they record the money on
+     * jobs partners started. A notary sees only their own — the profile check
+     * is the whole of it, and there is no other way into these screens.
      */
     private function authorizeOffsiteOwner(NotarizationRequest $request): void
     {
         abort_unless($request->is_offsite, 404);
+
+        if ($this->isAdmin()) {
+            return;
+        }
 
         $profile = $this->profile();
 
