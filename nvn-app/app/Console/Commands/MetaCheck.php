@@ -69,24 +69,32 @@ class MetaCheck extends Command
             return self::FAILURE;
         }
 
-        if (! $response->successful()) {
+        // Reading the dataset is a convenience, not the capability under test.
+        // Describing a dataset needs ads_read on the asset; posting events to it
+        // does not, and a token minted from the dataset page is scoped to send
+        // and nothing else. Failing the whole check here would condemn a working
+        // install — so this warns, and --send still gets to prove the real path.
+        $canRead = $response->successful();
+
+        if (! $canRead) {
             $error = $response->json('error') ?? [];
             $message = $error['message'] ?? Str::limit($response->body(), 300);
 
-            $this->error("Meta rejected the check (HTTP {$response->status()}): {$message}");
+            $this->warn("Meta would not describe this dataset (HTTP {$response->status()}): {$message}");
             $this->newLine();
             $this->line('  <options=bold>What that usually means</>');
+            $this->line('  · "Missing Permission" — most likely nothing is wrong with sending. Reading');
+            $this->line('    a dataset needs ads_read on the asset; posting events to it does not.');
+            $this->line('    Run this again with <options=bold>--send</> — that is the only capability the app uses.');
             $this->line('  · "Unsupported get request" or an unknown path — the dataset ID is wrong,');
             $this->line('    or the System User was never given access to this dataset.');
             $this->line('  · "Session has expired" / "Invalid OAuth" — the token was a short-lived one');
             $this->line('    from the dataset page. Mint a System User token instead; it does not expire.');
             $this->line("  · A complaint about version {$version} — Meta has retired it. Read the current");
             $this->line('    version off the Conversions API tab and set META_API_VERSION.');
-
-            return self::FAILURE;
+        } else {
+            $this->info('Token opens the dataset: ' . ($response->json('name') ?? $dataset));
         }
-
-        $this->info('Token opens the dataset: ' . ($response->json('name') ?? $dataset));
 
         // ── 3. Is anything actually being attributed? ────────────────────────
         $this->newLine();
@@ -136,9 +144,16 @@ class MetaCheck extends Command
                 custom: ['value' => 1.00, 'currency' => 'NGN'],
             );
 
-            $sent
-                ? $this->info('Test event accepted. It should appear in Events Manager within a minute or two.')
-                : $this->error('Test event was not accepted — see storage/logs for the [meta] line.');
+            if ($sent) {
+                $this->info('Test event accepted. It should appear in Events Manager within a minute or two.');
+
+                if (! $canRead) {
+                    $this->line('  The dataset would not describe itself earlier, but sending is what');
+                    $this->line('  matters and sending works. Nothing further is needed.');
+                }
+            } else {
+                $this->error('Test event was not accepted — see storage/logs for the [meta] line.');
+            }
 
             return $sent ? self::SUCCESS : self::FAILURE;
         }
@@ -146,6 +161,6 @@ class MetaCheck extends Command
         $this->newLine();
         $this->line('Run with <options=bold>--send</> to fire a test event and prove the whole path.');
 
-        return self::SUCCESS;
+        return $canRead ? self::SUCCESS : self::FAILURE;
     }
 }
