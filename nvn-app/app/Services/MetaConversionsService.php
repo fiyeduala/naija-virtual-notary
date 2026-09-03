@@ -116,7 +116,16 @@ class MetaConversionsService
 
         $received = (int) ($response->json('events_received') ?? 0);
 
-        Log::info("[meta] {$event} reported, events_received={$received}, event_id={$eventId}");
+        // fbtrace_id is the handle Meta's own support looks an event up by, and
+        // the only way to tell "you never sent it" apart from "we received it
+        // and did not show it to you" — which is exactly the argument you end
+        // up having when the Test Events tab stays empty after a successful
+        // send. It costs nothing to keep and cannot be recovered later.
+        $trace = $response->json('fbtrace_id');
+
+        Log::info("[meta] {$event} reported, events_received={$received}, event_id={$eventId}"
+            . ($trace ? ", fbtrace_id={$trace}" : '')
+            . ($this->testEventCode() !== '' ? ', test_event_code=' . $this->testEventCode() : ''));
 
         return $received > 0;
     }
