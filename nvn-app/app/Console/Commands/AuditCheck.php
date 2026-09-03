@@ -474,19 +474,46 @@ class AuditCheck extends Command
         }
 
         for ($minutes = -14 * 60; $minutes <= 14 * 60; $minutes += 15) {
-            if ($minutes === 0) {
-                continue;
-            }
-
-            $sign = $minutes > 0 ? '+' : '-';
+            $sign = $minutes >= 0 ? '+' : '-';
             $abs = abs($minutes);
             $offset = sprintf('%s%02d:%02d', $sign, intdiv($abs, 60), $abs % 60);
             $moved = ($minutes > 0 ? '+' : '−') . intdiv($abs, 60) . 'h'
                 . ($abs % 60 ? ' ' . ($abs % 60) . 'm' : '');
 
-            $byIso[$at->addMinutes($minutes)->toIso8601String()] ??= 'the moment was ' . $moved . ' from what it reads';
+            // Zero is skipped for the moment, where it means "no change", but
+            // never for the two offset candidates. UTC is an offset like any
+            // other, and for a row written under APP_TIMEZONE=UTC and read back
+            // under Africa/Lagos it is *the* answer — so treating zero as the
+            // null case here excluded the single likeliest explanation there is.
+            if ($minutes !== 0) {
+                $byIso[$at->addMinutes($minutes)->toIso8601String()] ??= 'the moment was ' . $moved . ' from what it reads';
+            }
+
             $byIso[CarbonImmutable::parse($digits, $offset)->toIso8601String()] ??= 'the clock read the same but the timezone was ' . $offset;
             $byIso[$at->setTimezone($offset)->toIso8601String()] ??= 'the same moment written in ' . $offset;
+        }
+
+        // Everything above moves the instant or the offset. None of it moves the
+        // *spelling*, because every candidate is rendered by the same call the
+        // writer uses — so if the rendering itself changed, no amount of moving
+        // the clock can reach the old string. It does change: toIso8601String()
+        // has not always meant the same thing, and a composer update on deploy
+        // is enough to swap +01:00 for +0100 under a table that was already
+        // sealed. That breaks exactly the rows written before the upgrade and
+        // leaves every later one verifying, which is this failure's signature.
+        foreach ([$at, $at->utc()] as $moment) {
+            foreach ([
+                'Y-m-d\TH:i:sO'    => 'an offset with no colon',
+                'Y-m-d\TH:i:s'     => 'no offset at all',
+                'Y-m-d H:i:s'      => 'a space instead of the T, and no offset',
+                'Y-m-d H:i:sP'     => 'a space instead of the T',
+                'Y-m-d\TH:i:s.uP'  => 'microseconds',
+                'Y-m-d\TH:i:s.vP'  => 'milliseconds',
+            ] as $format => $describe) {
+                $byIso[$moment->format($format)] ??= 'the same moment, written with ' . $describe;
+            }
+
+            $byIso[$moment->toIso8601ZuluString()] ??= 'the same moment, written with a Z for UTC';
         }
 
         return array_flip($byIso);
@@ -659,6 +686,21 @@ class AuditCheck extends Command
             return;
         }
 
+        if (isset($found['time']) && str_contains($found['time']['label'], 'written with')) {
+            $this->line('   Nobody edited this record, and the time it holds is the right time');
+            $this->line('   to the second. Only the way that time was spelled into the hash has');
+            $this->line('   changed. The hash covers an ISO8601 string, and what the date library');
+            $this->line('   renders for the same instant is not fixed across versions — a routine');
+            $this->line('   composer update on deploy is enough to swap one spelling for another.');
+            $this->line('   Rows sealed before the upgrade fail; everything sealed after it passes.');
+            $this->newLine();
+            $this->line('   Nothing needs repairing and nothing should be rewritten. This is a');
+            $this->line('   note to keep with the log: these rows are verifiable against the');
+            $this->line('   library version that wrote them, not the one running now.');
+
+            return;
+        }
+
         if (isset($found['time'])) {
             $this->line('   A MySQL TIMESTAMP is converted using the session time zone on the');
             $this->line('   way in and on the way out, so dumping the database on one machine');
@@ -699,13 +741,14 @@ class AuditCheck extends Command
         $this->line('   text. So this row\'s contents were altered after it was written, and');
         $this->line('   the hash is doing the job it exists for.');
         $this->newLine();
-        $this->line('   The one thing that cannot be ruled out is the metadata. Every other');
-        $this->line('   field is searched over values that still exist somewhere in this table,');
-        $this->line('   so an old one can be recovered and named. Metadata is free-form: the');
-        $this->line('   search can reshuffle and retype the keys this row still carries, but');
-        $this->line('   nothing can reconstruct a key it no longer has. If this row was edited,');
-        $this->line('   the metadata is where to look, and the old value is not recoverable');
-        $this->line('   from here — only from a backup taken before the change.');
+        $this->line('   What "ruled out" is worth, exactly: this search can only try values');
+        $this->line('   that still exist somewhere to be tried. So an old action name or entity');
+        $this->line('   type is found only if some other row still carries it, a previous_hash');
+        $this->line('   only if that row was not itself deleted, and the metadata only in the');
+        $this->line('   shapes its current keys can be bent into — nothing here can reconstruct');
+        $this->line('   a key the row no longer has. A value that left the table entirely is');
+        $this->line('   invisible to this, and only a backup taken before the change can settle');
+        $this->line('   it. That is a limit of the search, not evidence either way.');
         $this->newLine();
         $this->line('   Stored hash    ' . $stored);
         $this->line('   Recomputed     ' . $this->hash($row, $now));
