@@ -56,6 +56,21 @@ class AuditCheck extends Command
         $this->line('   database driver     ' . $driver);
         $this->line('   app timezone        ' . config('app.timezone'));
 
+        // A recorded exception has to be visible wherever the chain is checked.
+        // The whole value of it over an ignore-list is that it states a fact
+        // about how those rows were sealed, and a fact nobody can see is
+        // indistinguishable from a fudge.
+        $legacy = config('nvn.audit.legacy_timezone');
+        $through = (int) config('nvn.audit.legacy_through_id', 0);
+
+        if ($legacy !== null && $legacy !== '' && $through > 0) {
+            $this->line('   sealed earlier in   ' . $legacy . ', for rows up to #' . $through
+                . ' (config/nvn.php)');
+            $this->line('                       Those rows predate an APP_TIMEZONE change and are');
+            $this->line('                       still checked — against the offset they were');
+            $this->line('                       written with, not the one in force now.');
+        }
+
         if ($driver === 'mysql') {
             try {
                 $tz = DB::selectOne('SELECT @@session.time_zone AS s, @@global.time_zone AS g');
@@ -216,7 +231,9 @@ class AuditCheck extends Command
             'type'   => $row->entity_type,
             'entity' => $row->entity_id === null ? null : (int) $row->entity_id,
             'meta'   => $row->metadata,
-            'time'   => $row->created_at?->toIso8601String() ?? '',
+            // Whatever the verifier hashes, this has to hash too, or the
+            // command would keep diagnosing rows the panel now passes.
+            'time'   => AuditLogger::sealedTimeOf($row),
             'prev'   => $previousHash,
         ];
 

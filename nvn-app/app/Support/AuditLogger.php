@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AuditLog;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -103,12 +104,53 @@ class AuditLogger
             $row->entity_type,
             $row->entity_id,
             $row->metadata,
-            // A row with no timestamp cannot match any hash, but it must not
-            // throw either: one broken row has to be reportable, not fatal to
-            // the whole verification.
-            $row->created_at?->toIso8601String() ?? '',
+            static::sealedTimeOf($row),
             $previousHash,
         ));
+    }
+
+    /**
+     * The timestamp string this row's hash was actually taken over.
+     *
+     * The offset in an ISO8601 timestamp comes from APP_TIMEZONE at the moment
+     * it is rendered, so it is part of the hashed bytes without being part of
+     * the record. Changing APP_TIMEZONE therefore breaks every row sealed
+     * before the change while altering nothing in the table — the clock digits
+     * do not move, only the offset they are written with.
+     *
+     * config('nvn.audit') records where that boundary falls for this install.
+     * Rows on the old side of it are rendered in the timezone they were sealed
+     * under, which is a statement of fact about how they were written, not an
+     * exemption: each still has to match one exact spelling, so an edited row
+     * fails here exactly as it would anywhere else.
+     */
+    public static function sealedTimeOf(AuditLog $row): string
+    {
+        // A row with no timestamp cannot match any hash, but it must not throw
+        // either: one broken row has to be reportable, not fatal to the whole
+        // verification.
+        if ($row->created_at === null) {
+            return '';
+        }
+
+        $legacy = config('nvn.audit.legacy_timezone');
+        $through = (int) config('nvn.audit.legacy_through_id', 0);
+
+        if ($legacy === null || $legacy === '' || (int) $row->id > $through) {
+            return $row->created_at->toIso8601String();
+        }
+
+        // The digits, re-declared — not converted. A MySQL DATETIME stores a
+        // wall clock with no zone attached, so the column still holds the exact
+        // digits that were written; what changed is only which offset they are
+        // read as carrying. Converting the instant instead would move the clock
+        // by an hour and reproduce nothing. This is why the recovered string is
+        // ...T16:35:36+00:00 and not ...T15:35:36+00:00.
+        //
+        // If the app is already running in that timezone the result is the
+        // identical string, so the boundary costs nothing on an install that
+        // never moved.
+        return CarbonImmutable::parse($row->created_at->format('Y-m-d H:i:s'), $legacy)->toIso8601String();
     }
 
     /** Verify the entire chain is intact. Returns the id of the first broken row, or null if valid. */

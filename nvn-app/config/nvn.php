@@ -211,4 +211,56 @@ return [
         'max_value_ngn'   => (int) env('META_MAX_VALUE_NGN', 2000000),
     ],
 
+    /*
+    |---------------------------------------------------------------------------
+    | Audit log
+    |---------------------------------------------------------------------------
+    |
+    | An audit row's hash is taken over its timestamp written out as an ISO8601
+    | string, and that string carries the UTC offset — which comes from
+    | APP_TIMEZONE at the moment it is rendered. So moving APP_TIMEZONE changes
+    | the bytes every earlier row was sealed over, without touching a single
+    | value in the table. Every row written before the move stops verifying and
+    | every row after it is fine.
+    |
+    | That happened here. The log opened on 6 August 2026 under APP_TIMEZONE=UTC
+    | and the server moved to Africa/Lagos shortly after; entries #1 and #2
+    | predate the move. Entry #1's stored hash was reproduced exactly over
+    | ...T16:35:36+00:00, proving the row is untouched and that the offset is
+    | the only thing that differs.
+    |
+    | The wrong fix is to recompute those two hashes. They are the only evidence
+    | the rows are genuine, and overwriting them to silence a warning would
+    | replace that evidence with an assertion — exactly what a forger would do,
+    | and indistinguishable from it afterwards.
+    |
+    | So the verifier is told the truth instead: rows up to and including
+    | 'legacy_through_id' were sealed under 'legacy_timezone' and are rendered
+    | that way when their hash is checked. This narrows the check rather than
+    | loosening it. Those rows now verify against one specific spelling and no
+    | other, so editing one still breaks its hash, and nothing changes for any
+    | row above the boundary.
+    |
+    | This ships switched off, and has to be turned on per install. The boundary
+    | is a fact about one particular database — on a log that opened after the
+    | move, or on a rebuilt one, entries #1 and #2 were sealed in Lagos like
+    | everything else, and applying a UTC exception to them would break the two
+    | rows it is meant to explain. So it belongs in .env beside the other facts
+    | about where this copy runs. On the production server:
+    |
+    |   AUDIT_LEGACY_TIMEZONE=UTC
+    |   AUDIT_LEGACY_THROUGH_ID=2
+    |
+    | then `php artisan config:cache`.
+    |
+    | Never raise the boundary to cover a row you have not first explained. A
+    | row that fails for any other reason will not verify under a different
+    | offset anyway, so moving the line can only ever hide something you have
+    | not looked at — and that is how a log stops being evidence.
+    */
+    'audit' => [
+        'legacy_timezone'   => env('AUDIT_LEGACY_TIMEZONE'),
+        'legacy_through_id' => (int) env('AUDIT_LEGACY_THROUGH_ID', 0),
+    ],
+
 ];
