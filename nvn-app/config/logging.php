@@ -52,9 +52,21 @@ return [
 
     'channels' => [
 
+        /*
+         * Laravel ships this pointing at 'single' — one laravel.log that is
+         * never rotated and never truncated. On the shared cPanel host this
+         * runs on that is a slow disk-quota leak: the log only grows, and when
+         * the quota is reached it is not the log that fails, it is the site,
+         * because the same quota holds the database and the sealed PDFs.
+         *
+         * 'daily' writes the same records to a dated file and drops anything
+         * older than LOG_DAILY_DAYS (14 by default), which bounds the whole
+         * thing without anyone having to remember it exists. Set LOG_STACK to
+         * override; 'single' is still there if a one-file log is wanted.
+         */
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', env('LOG_STACK', 'single')),
+            'channels' => explode(',', env('LOG_STACK', 'daily')),
             'ignore_exceptions' => false,
         ],
 

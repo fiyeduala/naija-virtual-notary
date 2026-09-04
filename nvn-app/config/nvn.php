@@ -61,16 +61,29 @@ return [
     'paystack_transfers' => env('NVN_PAYSTACK_TRANSFERS', false),
 
     /*
-    | How long the scheduled queue worker runs before exiting, in seconds.
+    | How long the scheduled queue worker may run before exiting, in seconds.
     |
-    | It should be just under the interval of the server cron that calls
-    | `schedule:run`, so a worker is alive for as much of each window as
-    | possible. 55 suits the per-minute cron in routes/console.php. Some shared
-    | hosts refuse anything more frequent than every five minutes — set
-    | NVN_QUEUE_MAX_TIME=290 there, or queued email sits idle for four minutes
-    | out of every five.
+    | A ceiling, not a duration. routes/console.php runs the worker with
+    | --stop-when-empty, so on an idle queue it exits in about a second and
+    | this number never comes into it. It only binds when there is a backlog
+    | bigger than one window — and then it decides what share of the clock the
+    | queue actually gets.
+    |
+    | That share is this value over the interval of the cron that calls
+    | `schedule:run`. At 55 seconds against a five-minute cron the queue works
+    | for 55 seconds and then waits four minutes for the next window: an 18%
+    | duty cycle, so a campaign holding thirty minutes of sending takes closer
+    | to three hours. At 290 the same campaign takes about thirty-one minutes.
+    |
+    | 290 is the default because it is right for both common cases rather than
+    | a compromise between them. Under the five-minute cron some shared hosts
+    | insist on, it fills the window. Under a per-minute cron it simply keeps
+    | working across several windows — withoutOverlapping() in
+    | routes/console.php holds the later runs off rather than stacking workers,
+    | which is the behaviour you want anyway. Keep it under the mutex expiry
+    | there (ten minutes), and under any process time limit the host enforces.
     */
-    'queue_max_time' => (int) env('NVN_QUEUE_MAX_TIME', 55),
+    'queue_max_time' => (int) env('NVN_QUEUE_MAX_TIME', 290),
 
     /*
     | Tawk.to live chat.

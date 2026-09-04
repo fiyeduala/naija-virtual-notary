@@ -8,8 +8,10 @@ use Illuminate\Support\Facades\Schedule;
 | One per-minute server cron invokes `schedule:run`, which fires both of these:
 |   * * * * * cd /path-to-app && php artisan schedule:run >> /dev/null 2>&1
 |
-| If the host will not allow a per-minute cron, use its shortest interval and
-| set NVN_QUEUE_MAX_TIME to just under that interval in seconds.
+| If the host will not allow a per-minute cron, use its shortest interval. The
+| default NVN_QUEUE_MAX_TIME already suits a five-minute floor — read the note
+| in config/nvn.php before changing it, because the number is a ceiling on a
+| busy worker rather than how long one stays alive.
 |
 | Locally, run `php artisan schedule:work` in a second terminal instead.
 */
