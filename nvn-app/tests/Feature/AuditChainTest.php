@@ -104,17 +104,17 @@ class AuditChainTest extends TestCase
      */
     public function test_changing_the_timezone_breaks_the_entries_sealed_before_it(): void
     {
-        $this->sealTwoUnderUtcThenOneUnderLagos();
+        [$utc, ] = $this->sealTwoUnderUtcThenOneUnderLagos();
 
-        $this->assertSame([1, 2], AuditLogger::verify()['broken'], 'only the entries sealed under UTC');
+        $this->assertSame($utc, AuditLogger::verify()['broken'], 'only the entries sealed under UTC');
     }
 
     /** Declaring where the boundary falls makes the whole chain verify again. */
     public function test_declaring_the_old_timezone_makes_the_chain_verify(): void
     {
-        $this->sealTwoUnderUtcThenOneUnderLagos();
+        [$utc, ] = $this->sealTwoUnderUtcThenOneUnderLagos();
 
-        config(['nvn.audit.legacy_timezone' => 'UTC', 'nvn.audit.legacy_through_id' => 2]);
+        config(['nvn.audit.legacy_timezone' => 'UTC', 'nvn.audit.legacy_through_id' => end($utc)]);
 
         $this->assertSame([], AuditLogger::verify()['broken']);
     }
@@ -122,31 +122,42 @@ class AuditChainTest extends TestCase
     /** The boundary is not an amnesty: an entry inside it that was edited still fails. */
     public function test_an_edit_inside_the_old_timezone_range_is_still_caught(): void
     {
-        $this->sealTwoUnderUtcThenOneUnderLagos();
+        [$utc, ] = $this->sealTwoUnderUtcThenOneUnderLagos();
 
-        config(['nvn.audit.legacy_timezone' => 'UTC', 'nvn.audit.legacy_through_id' => 2]);
+        config(['nvn.audit.legacy_timezone' => 'UTC', 'nvn.audit.legacy_through_id' => end($utc)]);
 
-        DB::table('audit_log')->where('id', 1)->update(['action' => 'test.rewritten']);
+        DB::table('audit_log')->where('id', $utc[0])->update(['action' => 'test.rewritten']);
 
-        $this->assertSame([1], AuditLogger::verify()['broken']);
+        $this->assertSame([$utc[0]], AuditLogger::verify()['broken']);
     }
 
     /** And an entry sealed after the change is not read in the old timezone. */
     public function test_the_boundary_does_not_reach_past_where_it_was_drawn(): void
     {
-        $this->sealTwoUnderUtcThenOneUnderLagos();
+        [, $lagos] = $this->sealTwoUnderUtcThenOneUnderLagos();
 
-        config(['nvn.audit.legacy_timezone' => 'UTC', 'nvn.audit.legacy_through_id' => 3]);
+        config(['nvn.audit.legacy_timezone' => 'UTC', 'nvn.audit.legacy_through_id' => $lagos]);
 
-        $this->assertSame([3], AuditLogger::verify()['broken'], 'row 3 was sealed under Lagos');
+        $this->assertSame([$lagos], AuditLogger::verify()['broken'], 'the last entry was sealed under Lagos');
     }
 
-    private function sealTwoUnderUtcThenOneUnderLagos(): void
+    /**
+     * Returns the ids actually written rather than assuming 1, 2, 3. On SQLite
+     * every test starts from an empty database, but on MySQL the tests share one
+     * and a rolled-back insert still uses up its id, so numbering carries on.
+     *
+     * @return array{0: list<int>, 1: int}
+     */
+    private function sealTwoUnderUtcThenOneUnderLagos(): array
     {
         $this->useTimezone('UTC');
         $this->writeEntries(2);
+        $utc = AuditLog::orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
 
         $this->useTimezone('Africa/Lagos');
         $this->writeEntries(1);
+        $lagos = (int) AuditLog::max('id');
+
+        return [$utc, $lagos];
     }
 }
