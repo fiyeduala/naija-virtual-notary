@@ -1,10 +1,10 @@
 # Runs the automated tests on GitHub's own machines on every push to main and
-# on every pull request, twice: once on SQLite and once on MySQL.
+# on every pull request, twice: once on SQLite and once on MariaDB.
 #
 # This workflow never touches the live server. It has no deploy step, reads no
 # secrets, and opens no connection to cPanel or the production database.
 # The SQLite run uses a database held in memory (forced in phpunit.xml). The
-# MySQL run uses a MySQL server that GitHub starts inside this job and
+# MariaDB run uses a MariaDB server that GitHub starts inside this job and
 # destroys when the job ends (forced in phpunit.mysql.xml).
 
 name: Tests
@@ -31,19 +31,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        database: [sqlite, mysql]
+        database: [sqlite, mariadb]
 
     services:
+      # MariaDB, not MySQL 8, because that is what the cPanel host runs. The
+      # difference is real: push_subscriptions has a UNIQUE index on a TEXT
+      # column, which MariaDB 10.4+ accepts and MySQL 8 rejects (error 1170).
+      # Keep this version in step with the live server.
       # Started for both runs; the SQLite run simply never connects to it.
-      mysql:
-        image: mysql:8.0
+      mariadb:
+        image: mariadb:10.6
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: nvn_testing
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: nvn_testing
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -proot"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
@@ -81,6 +85,6 @@ jobs:
         if: matrix.database == 'sqlite'
         run: vendor/bin/phpunit -c phpunit.xml
 
-      - name: Run tests on MySQL
-        if: matrix.database == 'mysql'
+      - name: Run tests on MariaDB (the live server's database)
+        if: matrix.database == 'mariadb'
         run: vendor/bin/phpunit -c phpunit.mysql.xml

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-    The same tests as phpunit.xml, run against MySQL instead of SQLite.
+    The same tests as phpunit.xml, run against MariaDB instead of SQLite. The connection driver is still "mysql".
 
-    The live server runs MySQL, and some behaviour only shows up there: how a
+    The live server runs MariaDB (a MySQL fork), and some behaviour only shows up there: how a
     TIMESTAMP column round-trips, InnoDB row locks, strict-mode rejections,
     integer columns coming back as strings. SQLite cannot catch any of those.
 
-    This is meant for GitHub Actions, which starts a disposable MySQL server
+    This is meant for GitHub Actions, which starts a disposable MariaDB server
     for each run and throws it away afterwards. Every setting is forced so
     that a .env cannot redirect it, and the database must be named *_testing
     — tests/TestCase.php refuses to run against anything else.
