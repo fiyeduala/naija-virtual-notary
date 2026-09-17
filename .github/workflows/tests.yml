@@ -1,0 +1,59 @@
+# Runs the automated tests on GitHub's own machines on every push to main and
+# on every pull request.
+#
+# This workflow never touches the live server. It has no deploy step, reads no
+# secrets, and opens no connection to cPanel or the production database: the
+# tests run against a throwaway SQLite database held in memory, forced in
+# nvn-app/phpunit.xml, that disappears when the run ends.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phpunit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: nvn-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, sqlite3, gd, zip, intl, bcmath, fileinfo
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ hashFiles('nvn-app/composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare a test-only environment file
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Run tests
+        run: php artisan test
