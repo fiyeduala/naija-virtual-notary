@@ -84,7 +84,13 @@ return [
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
-            'collation' => env('DB_COLLATION', 'utf8mb4_0900_ai_ci'),
+            // NOT Laravel's own default of utf8mb4_0900_ai_ci. That collation
+            // ships with MySQL 8 and does not exist in MariaDB, which is what
+            // the live server runs — and the connector sends it in a SET NAMES
+            // on every connect, so the very first query dies with
+            // "1273 Unknown collation" and the whole site is down. utf8mb4_
+            // unicode_ci is understood by both.
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -110,7 +116,11 @@ return [
             'password' => env('DB_PASSWORD', ''),
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
-            'collation' => env('DB_COLLATION', 'utf8mb4_uca1400_ai_ci'),
+            // Laravel's default here is utf8mb4_uca1400_ai_ci, which arrived in
+            // MariaDB 11.4. The host runs an older 10.x, so it would fail the
+            // same way. This connection is unused — DB_CONNECTION is mysql —
+            // but a default that cannot connect is a trap for whoever tries it.
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,

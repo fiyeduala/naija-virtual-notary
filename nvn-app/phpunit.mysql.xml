@@ -41,8 +41,24 @@
         <env name="DB_HOST" value="127.0.0.1" force="true"/>
         <env name="DB_PORT" value="3306" force="true"/>
         <env name="DB_DATABASE" value="nvn_testing" force="true"/>
-        <env name="DB_USERNAME" value="root" force="true"/>
-        <env name="DB_PASSWORD" value="root" force="true"/>
+        <!--
+            utf8mb4_0900_ai_ci, which Laravel 11 defaults to, is a MySQL 8
+            collation that MariaDB does not have — the connector sends it in a
+            SET NAMES on connect, so every query dies with "1273 Unknown
+            collation". Set here as well as in config/database.php so a test run
+            says out loud which collation it is proving.
+        -->
+        <env name="DB_CHARSET" value="utf8mb4" force="true"/>
+        <env name="DB_COLLATION" value="utf8mb4_unicode_ci" force="true"/>
+        <!--
+            Credentials are NOT forced: they are the one thing that differs
+            between GitHub's throwaway server (root/root, set on the workflow
+            step) and whatever MariaDB a developer has locally. Without them
+            config/database.php falls back to root with no password, which is
+            what a stock XAMPP or MariaDB install uses. The database NAME stays
+            forced — that is what tests/TestCase.php checks before it lets
+            anything run.
+        -->
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

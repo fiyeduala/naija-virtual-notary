@@ -87,4 +87,10 @@ jobs:
 
       - name: Run tests on MariaDB (the live server's database)
         if: matrix.database == 'mariadb'
+        # The credentials of the throwaway server started above. They live here
+        # rather than in phpunit.mysql.xml so that the same config file also
+        # runs against a developer's own MariaDB, which will have its own.
+        env:
+          DB_USERNAME: root
+          DB_PASSWORD: root
         run: vendor/bin/phpunit -c phpunit.mysql.xml
