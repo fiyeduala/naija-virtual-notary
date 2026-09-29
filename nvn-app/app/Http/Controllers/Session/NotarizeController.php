@@ -48,7 +48,11 @@ class NotarizeController extends Controller
 
         $document = $this->currentDocument($request);
 
-        $ext = strtolower(pathinfo($document->original_filename ?? $document->file_url, PATHINFO_EXTENSION));
+        // A Word document is shown as its PDF rendition, so the notary places
+        // marks on the same pages the seal will be applied to. See DocxRenderer.
+        $ext = $this->renditionFor($document)
+            ? 'pdf'
+            : strtolower(pathinfo($document->original_filename ?? $document->file_url, PATHINFO_EXTENSION));
 
         $assetSets = $this->availableAssetSets($request);
 
@@ -83,6 +87,20 @@ class NotarizeController extends Controller
     {
         $this->authorizeNotarySide($request);
         $document = $this->currentDocument($request);
+
+        // Serve the PDF rendition of a Word document rather than the .docx
+        // itself: the editor can only place marks accurately on the same pages
+        // the sealing service will draw them on.
+        if ($rendition = $this->renditionFor($document)) {
+            return Storage::disk('private')->response(
+                $rendition,
+                pathinfo($document->original_filename ?? 'document', PATHINFO_FILENAME) . '.pdf',
+                [
+                    'Content-Type'        => 'application/pdf',
+                    'Content-Disposition' => 'inline; filename="document.pdf"',
+                ],
+            );
+        }
 
         $ext  = strtolower(pathinfo($document->original_filename ?? $document->file_url, PATHINFO_EXTENSION));
         $mime = match ($ext) {
@@ -311,6 +329,18 @@ class NotarizeController extends Controller
      * upload. The id is checked against this request's own notarizable set, so
      * it cannot be pointed at another client's file or at the ID scan.
      */
+    /**
+     * The PDF rendition of a Word upload, or null for everything else.
+     *
+     * Both the editor and the file stream ask this, and they must always get
+     * the same answer: if one showed the .docx and the other the rendition, the
+     * marks would be recorded against a page that does not exist.
+     */
+    private function renditionFor(\App\Models\RequestDocument $document): ?string
+    {
+        return app(\App\Services\DocxRenderer::class)->renditionFor($document);
+    }
+
     private function currentDocument(NotarizationRequest $request): \App\Models\RequestDocument
     {
         $documents = $request->notarizableDocuments;

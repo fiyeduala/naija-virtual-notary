@@ -38,7 +38,10 @@ class PdfNotarizationService
     /** Rewritten copies made to get a modern PDF open; deleted before we return. */
     private array $scratch = [];
 
-    public function __construct(private PdfNormalizer $normalizer) {}
+    public function __construct(
+        private PdfNormalizer $normalizer,
+        private DocxRenderer $docx,
+    ) {}
 
     /**
      * Seal every document on the request.
@@ -96,6 +99,14 @@ class PdfNotarizationService
         $sourcePath = Storage::disk('private')->path($source->file_url);
         $ext        = strtolower(pathinfo($source->original_filename ?? $source->file_url, PATHINFO_EXTENSION));
 
+        // A Word upload is sealed through the same PDF the editor showed, not
+        // converted a second time here. Two conversions meant two different
+        // sets of pages, and marks placed on one were drawn on the other.
+        if ($rendition = $this->docx->renditionFor($source)) {
+            $sourcePath = Storage::disk('private')->path($rendition);
+            $ext        = 'pdf';
+        }
+
         // Placements for this document, grouped by page
         $placements = \App\Models\DocumentPlacement::where('document_id', $source->id)
             ->orderBy('page')
@@ -119,19 +130,26 @@ class PdfNotarizationService
                 $this->renderPlacement($pdf, $placement, $pageW, $pageH);
             }
         } elseif (in_array($ext, ['docx', 'doc'])) {
-            // ── Word document: extract text via ZipArchive (DOCX) or raw (DOC)
-            $pageW = 210.0;
-            $pageH = 297.0;
+            // ── Word document that could not be rendered to a PDF first ─────
+            //
+            // Only .doc (the old binary format, which nothing here can read)
+            // and a .docx whose conversion failed reach this. The text is laid
+            // out on A4 and the marks go on afterwards.
+            $pageW = DocxRenderer::PAGE_WIDTH;
+            $pageH = DocxRenderer::PAGE_HEIGHT;
             $pdf->AddPage('P', [$pageW, $pageH]);
             $pdf->SetAutoPageBreak(true, 15);
             $pdf->SetFont('helvetica', '', 11);
             $pdf->SetTextColor(15, 23, 42);
-            $html = $ext === 'docx' ? $this->docxToHtml($sourcePath) : '<p>[DOC content — finalized with placements only]</p>';
+            $html = $ext === 'docx'
+                ? $this->docx->htmlFor($sourcePath)
+                : '<p>[DOC content — finalized with placements only]</p>';
             $pdf->writeHTML($html, true, false, true, false, '');
 
-            foreach ($placements->get(1, []) as $placement) {
-                $this->renderPlacement($pdf, $placement, $pageW, $pageH);
-            }
+            // writeHTML leaves the cursor on the LAST page it produced, so
+            // drawing straight after it put every mark on the final page
+            // whatever page it was placed on. Name the page each time instead.
+            $this->renderPlacementsByPage($pdf, $placements, $pageW, $pageH);
         } else {
             // ── PDF source: import pages via FPDI ───────────────────────────
             $pageCount = $pdf->setSourceFile($this->importable($sourcePath));
@@ -293,37 +311,40 @@ class PdfNotarizationService
         }
     }
 
-    /** Extract DOCX content as basic HTML using ZipArchive (no PhpWord needed). */
-    private function docxToHtml(string $path): string
+    /**
+     * Draw each page's marks on that page.
+     *
+     * A placement names the page it was made on, and TCPDF draws on whichever
+     * page it happens to be sitting on — so the page has to be named before
+     * every group. Marks for a page the document does not have are dropped:
+     * that can only be a document re-uploaded shorter than the one the notary
+     * worked on, and inventing a page for them would be worse than losing them.
+     *
+     * @param  Collection<int, Collection<int, \App\Models\DocumentPlacement>>  $placements  keyed by page
+     */
+    private function renderPlacementsByPage(Fpdi $pdf, Collection $placements, float $pageW, float $pageH): void
     {
-        if (! class_exists('ZipArchive')) {
-            return '<p>[ZipArchive unavailable — document content could not be extracted]</p>';
+        $lastPage = $pdf->getNumPages();
+
+        foreach ($placements as $pageNo => $forPage) {
+            if ($pageNo < 1 || $pageNo > $lastPage) {
+                Log::warning('Notarization placements skipped: no such page', [
+                    'page'  => $pageNo,
+                    'pages' => $lastPage,
+                    'count' => count($forPage),
+                ]);
+
+                continue;
+            }
+
+            $pdf->setPage($pageNo);
+
+            foreach ($forPage as $placement) {
+                $this->renderPlacement($pdf, $placement, $pageW, $pageH);
+            }
         }
 
-        $zip = new \ZipArchive();
-        if ($zip->open($path) !== true) {
-            return '<p>[Could not open DOCX file]</p>';
-        }
-
-        $xml = $zip->getFromName('word/document.xml');
-        $zip->close();
-
-        if (! $xml) {
-            return '<p>[DOCX document.xml not found]</p>';
-        }
-
-        // Insert paragraph breaks and strip XML tags
-        $xml  = str_replace(['</w:p>', '</w:tr>'], ['</w:p>' . "\n\n", '</w:tr>' . "\n"], $xml);
-        $text = strip_tags($xml);
-        $text = html_entity_decode($text, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-
-        $lines = array_filter(array_map('trim', explode("\n", $text)), fn ($l) => $l !== '');
-        $html  = '';
-        foreach ($lines as $line) {
-            $html .= '<p>' . htmlspecialchars($line) . '</p>';
-        }
-
-        return $html ?: '<p>[No text content found in document]</p>';
+        $pdf->setPage($lastPage);
     }
 
     /**

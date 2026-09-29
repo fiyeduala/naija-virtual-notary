@@ -190,9 +190,14 @@
                     ov.style.height = actualH + 'px';
                 });
 
-                if (result.messages && result.messages.length) {
-                    setStatus('DOCX loaded with ' + result.messages.length + ' formatting note(s). Some styles may not render exactly.');
-                }
+                // Reached only when the server could not render this Word file
+                // to a PDF first. Without that rendition the preview is one
+                // long page while the sealed file is A4 pages, so a mark cannot
+                // be guaranteed to land where it was dropped — say so plainly
+                // rather than let it be discovered after sealing.
+                setStatus('This Word file could not be converted to PDF, so the preview below is approximate '
+                    + 'and marks may not land exactly where you place them. Ask the client for a PDF if the '
+                    + 'sealed copy comes out wrong.', true);
 
                 loadExistingPlacements();
             })
@@ -210,7 +215,10 @@
         hideLoading();
         var maxW = (wrap.parentElement ? wrap.parentElement.clientWidth : 800) - 56;
         var w    = Math.min(maxW, 794);
-        var h    = 1123;
+        // Keep A4's proportions whatever the screen width. Placements are saved
+        // as a fraction of the page, so a box that is narrow on a phone and
+        // wide on a desktop would record the same drop as two different points.
+        var h    = Math.round(w * 1123 / 794);
 
         var notice = document.createElement('div');
         notice.style.cssText = [
