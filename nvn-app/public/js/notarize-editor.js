@@ -766,7 +766,15 @@
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': cfg.csrf },
             body:    JSON.stringify({ placements: payload }),
         }).then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
+            if (!r.ok) {
+                /* Say what the server said. "HTTP 422" told the notary nothing
+                   and hid the one sentence that explains what to do about it. */
+                return r.json().then(function (body) {
+                    throw new Error((body && body.message) || ('HTTP ' + r.status));
+                }, function () {
+                    throw new Error('HTTP ' + r.status);
+                });
+            }
             return r.json();
         }).then(function (data) {
             dirty = false;

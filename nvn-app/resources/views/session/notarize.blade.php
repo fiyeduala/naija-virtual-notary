@@ -345,7 +345,11 @@
     existing:    @json($placements),
   };
 </script>
-<script src="{{ asset('js/notarize-editor.js') }}"></script>
+{{-- Fingerprinted by modification time. Without it, a notary whose browser (or
+     Cloudflare) had cached the old file kept running it after a deploy: the
+     editor looked right, the marks it sent were the old shape, and what was
+     missing from them only showed up on the finished document. --}}
+<script src="{{ asset('js/notarize-editor.js') }}?v={{ @filemtime(public_path('js/notarize-editor.js')) ?: 1 }}"></script>
 @if ($documents->count() > 1)
 <script>
   // Switching tabs is a page load, so anything not yet persisted would be lost.

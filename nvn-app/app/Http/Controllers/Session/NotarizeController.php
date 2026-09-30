@@ -189,6 +189,23 @@ class NotarizeController extends Controller
             'placements.*.signature_document_id.in' => 'That signature is not one the client uploaded to this request.',
         ]);
 
+        // An image mark that names no image. Nothing can be drawn from it, and
+        // storing it would mean the notary sees the item in the editor, seals,
+        // and finds the document without it — which is exactly what happened
+        // the first time a browser kept running a cached notarize-editor.js
+        // from before signature_document_id existed. Refused out loud instead.
+        foreach ($data['placements'] as $p) {
+            if (($p['type'] ?? null) === 'asset'
+                && blank($p['asset_id'] ?? null)
+                && blank($p['signature_document_id'] ?? null)) {
+                return response()->json([
+                    'message' => 'This page is running an old copy of the editor, so one of your marks '
+                        . 'arrived with no image attached and nothing was saved. Reload the page '
+                        . '(Ctrl+Shift+R, or ⌘+Shift+R on a Mac) and place it again.',
+                ], 422);
+            }
+        }
+
         $document = $this->currentDocument($request);
 
         DB::transaction(function () use ($document, $data) {

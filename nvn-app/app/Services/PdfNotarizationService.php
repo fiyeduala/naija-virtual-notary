@@ -431,6 +431,19 @@ class PdfNotarizationService
             $pdf->SetTextColor(15, 23, 42);
             $pdf->SetXY($x, $y);
             $pdf->Cell($w ?: 0, $h ?: 0, $placement->text_value, 0, 0, 'L', false, '', 0, false, 'T', 'M');
+        } else {
+            // A saved mark that names nothing to draw. It used to fall out of
+            // here in silence, which is the worst way for this to fail: the
+            // notary sees the item in the editor, finalizes, and the document
+            // comes out without it. Usually a browser running a cached copy of
+            // notarize-editor.js that predates a field the row needs.
+            Log::warning('Notarization placement skipped: nothing to draw', [
+                'placement_id' => $placement->id,
+                'type'         => $placement->type,
+                'asset_id'     => $placement->asset_id,
+                'signature_document_id' => $placement->signature_document_id,
+                'has_text'     => $placement->text_value !== null,
+            ]);
         }
     }
 }

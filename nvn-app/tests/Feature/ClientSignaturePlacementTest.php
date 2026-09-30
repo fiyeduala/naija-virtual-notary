@@ -122,6 +122,26 @@ class ClientSignaturePlacementTest extends TestCase
             ->assertStatus(422);
     }
 
+    /**
+     * A mark naming no image is refused, not stored.
+     *
+     * This is what a browser running a cached copy of notarize-editor.js sends:
+     * the item is on screen, the id that says which image it is never leaves
+     * the page. Stored, it seals into nothing and the notary only finds out by
+     * looking at the finished document.
+     */
+    public function test_a_mark_with_no_image_is_refused_rather_than_saved_invisibly(): void
+    {
+        $d = $this->desk();
+
+        $response = $this->actingAs($d['notary']->user)
+            ->save($d['request'], $d['document'], [])
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('old copy of the editor', $response->json('message'));
+        $this->assertSame(0, DocumentPlacement::count());
+    }
+
     /** A notary mark wins: a placement is one or the other, never both. */
     public function test_a_placement_carrying_both_keeps_only_the_notary_asset(): void
     {
@@ -171,6 +191,61 @@ class ClientSignaturePlacementTest extends TestCase
         $this->actingAs($stranger)
             ->get(route('session.client-signature', ['request' => $d['request']->id, 'signature' => $d['signature']->id]))
             ->assertForbidden();
+    }
+
+    /**
+     * The whole point, end to end: the image reaches the sealed PDF.
+     *
+     * Everything else here proves the placement is stored and guarded. This
+     * proves it is *drawn* — the one thing a notary standing in front of a
+     * finished document actually cares about. The control run seals the same
+     * page with nothing placed on it, so the assertion cannot pass on an image
+     * that was already in the source.
+     */
+    public function test_the_clients_signature_is_drawn_into_the_sealed_pdf(): void
+    {
+        $d = $this->desk();
+
+        // A real one-page PDF and a real PNG — the sealer opens both for true.
+        $pdf = new \TCPDF('P', 'mm', [210, 297]);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->AddPage();
+        $pdf->SetFont('helvetica', '', 12);
+        $pdf->Write(0, 'DEED OF ASSIGNMENT');
+        Storage::disk('private')->put($d['document']->file_url, $pdf->Output('', 'S'));
+
+        $img = imagecreatetruecolor(120, 40);
+        imagefilledrectangle($img, 0, 0, 119, 39, imagecolorallocate($img, 255, 255, 255));
+        imageline($img, 4, 30, 116, 8, imagecolorallocate($img, 10, 20, 90));
+        ob_start();
+        imagepng($img);
+        Storage::disk('private')->put($d['signature']->file_url, ob_get_clean());
+        imagedestroy($img);
+
+        $this->actingAs($d['notary']->user);
+        $service = app(\App\Services\PdfNotarizationService::class);
+
+        // Control: the same page, nothing placed.
+        $bare = Storage::disk('private')->get($service->generate($d['request'])->sole()->file_url);
+        $this->assertDoesNotMatchRegularExpression('#/Subtype\s*/Image#', $bare);
+
+        DocumentPlacement::create([
+            'document_id'           => $d['document']->id,
+            'type'                  => 'asset',
+            'signature_document_id' => $d['signature']->id,
+            'page'                  => 1,
+            'x'                     => 0.35,
+            'y'                     => 0.80,
+            'width'                 => 0.25,
+            'height'                => 0.05,
+            'placed_by'             => $d['notary']->user_id,
+        ]);
+
+        $sealed = Storage::disk('private')->get($service->generate($d['request']->fresh())->sole()->file_url);
+
+        $this->assertMatchesRegularExpression('#/Subtype\s*/Image#', $sealed);
+        $this->assertGreaterThan(strlen($bare), strlen($sealed));
     }
 
     /**
