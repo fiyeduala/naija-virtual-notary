@@ -354,6 +354,9 @@
             type:       tool.tool === 'asset' ? 'asset' : 'text',
             asset_id:   tool.tool === 'asset' ? (tool.assetId || null) : null,
             asset_url:  tool.tool === 'asset' ? (tool.assetUrl || null) : null,
+            /* The client's own signature image. Drawn and moved exactly like a
+               notary asset, but it is never one — hence its own field. */
+            signature_document_id: tool.tool === 'asset' ? (tool.clientDocId || null) : null,
             text_value: textValue,
             page:       pageNum,
             /* Held as the CENTER only until renderPlacement sizes the box and
@@ -720,7 +723,12 @@
                 _id:        'p-saved-' + row.id,
                 type:       row.type,
                 asset_id:   row.asset_id   || null,
-                asset_url:  row.asset_id   ? (cfg.assetUrl + '/' + row.asset_id) : null,
+                signature_document_id: row.signature_document_id || null,
+                asset_url:  row.asset_id
+                    ? (cfg.assetUrl + '/' + row.asset_id)
+                    : (row.signature_document_id
+                        ? (cfg.clientSigUrl + '/' + row.signature_document_id)
+                        : null),
                 text_value: row.text_value || null,
                 page:       parseInt(row.page, 10) || 1,
                 x:          parseFloat(row.x)      || 0,
@@ -743,6 +751,7 @@
             return {
                 type:       p.type,
                 asset_id:   p.asset_id   || null,
+                signature_document_id: p.signature_document_id || null,
                 text_value: p.text_value || null,
                 page:       p.page,
                 x:          p.x,
@@ -844,6 +853,8 @@
             tool:      btn.dataset.tool,
             assetId:   btn.dataset.assetId  || null,
             assetUrl:  btn.dataset.assetUrl || null,
+            /* Present only on the client-signature tools; null on a notary mark. */
+            clientDocId: btn.dataset.clientDocId || null,
             textValue: btn.hasAttribute('data-text') ? btn.dataset.text : null,
         };
 
@@ -857,6 +868,7 @@
             var same = activeTool
                 && activeTool.tool      === toolData.tool
                 && activeTool.assetId   === toolData.assetId
+                && activeTool.clientDocId === toolData.clientDocId
                 && activeTool.textValue === toolData.textValue;
 
             setActiveTool(same ? null : toolData, btn);

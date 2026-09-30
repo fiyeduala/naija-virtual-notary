@@ -11,5 +11,9 @@ class DocumentPlacement extends Model
 
     public function document(): BelongsTo { return $this->belongsTo(RequestDocument::class, 'document_id'); }
     public function asset(): BelongsTo { return $this->belongsTo(NotaryAsset::class, 'asset_id'); }
+
+    /** For a client-signature placement: the upload the image comes from. */
+    public function signatureDocument(): BelongsTo { return $this->belongsTo(RequestDocument::class, 'signature_document_id'); }
+
     public function placedBy(): BelongsTo { return $this->belongsTo(User::class, 'placed_by'); }
 }

@@ -21,6 +21,10 @@ Route::middleware(['auth', 'verified.otp'])->group(function () {
     Route::get('/session/{request}/notarize', [NotarizeController::class, 'edit'])->name('session.notarize');
     Route::get('/session/{request}/document', [NotarizeController::class, 'document'])->name('session.document');
     Route::get('/session/{request}/asset/{asset}', [NotarizeController::class, 'asset'])->name('session.asset');
+    // The client's own uploaded signature image, which the notary may place on
+    // the document — a separate endpoint from the notary's marks above so the
+    // two authorization scopes cannot be confused for one another.
+    Route::get('/session/{request}/client-signature/{signature}', [NotarizeController::class, 'clientSignature'])->name('session.client-signature');
     Route::post('/session/{request}/placements', [NotarizeController::class, 'savePlacements'])->name('session.placements');
     Route::post('/session/{request}/finalize', [NotarizeController::class, 'finalize'])->name('session.finalize');
     Route::get('/session/{request}/done', [NotarizeController::class, 'done'])->name('session.done');

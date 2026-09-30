@@ -256,6 +256,32 @@
                 @endforeach
             @endforeach
 
+            @if ($clientSignatures->isNotEmpty())
+                {{-- The client's own signature. Offered as its own set, never
+                     mixed in with the notary's marks, because the two mean
+                     completely different things on a finished document. --}}
+                <span class="text-sm muted" style="width:100%; margin: 4px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;">
+                    Client’s own signature
+                </span>
+                <span class="text-sm" style="width:100%; margin:0 0 4px; font-size:11px; color:#b45309;">
+                    Uploaded by {{ $request->client?->full_name ?? 'the client' }} to be signed on their behalf. Place it only
+                    where they asked for it — it is recorded as your act, and it does not count as your seal.
+                </span>
+                @foreach ($clientSignatures as $signature)
+                    <button type="button" class="btn btn-ghost btn-sm tool"
+                            data-tool="asset"
+                            data-client-doc-id="{{ $signature->id }}"
+                            data-asset-url="{{ route('session.client-signature', [$request, $signature]) }}"
+                            draggable="true"
+                            title="Click or drag onto the document">
+                        <x-heroicon-o-pencil-square style="width:13px;height:13px;"/>
+                        {{ $signature->file_type === 'client_signature'
+                            ? 'Client signature'
+                            : Str::limit($signature->label(), 20) }}
+                    </button>
+                @endforeach
+            @endif
+
             <div style="width:1px; height:28px; background:var(--line); margin: 0 4px;"></div>
             <button type="button" class="btn btn-ghost btn-sm tool" data-tool="text" data-text="" draggable="true" title="Click or drag to add custom text">
                 <x-heroicon-o-bars-3-bottom-left style="width:13px;height:13px;"/>
@@ -311,6 +337,9 @@
     documentUrl: "{{ route('session.document', [$request, 'document' => $document->id]) }}",
     saveUrl:     "{{ route('session.placements', [$request, 'document' => $document->id]) }}",
     assetUrl:    "{{ url('session/' . $request->id . '/asset') }}",
+    // Saved client-signature placements are re-drawn from here, the same way
+    // asset placements are re-drawn from assetUrl.
+    clientSigUrl: "{{ url('session/' . $request->id . '/client-signature') }}",
     csrf:        "{{ csrf_token() }}",
     fileExt:     "{{ $fileExt }}",
     existing:    @json($placements),

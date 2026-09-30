@@ -362,6 +362,35 @@ class PdfNotarizationService
         $w = ($placement->width ?? 0) * $pageW;
         $h = ($placement->height ?? 0) * $pageH;
 
+        // The client's own signature, placed by the notary because the client
+        // sent it for exactly that. Checked before the notary's marks and it
+        // never carries an asset_id, which is what keeps it out of
+        // sealAuthor() — a client signature is not a notarial act and must
+        // never name anybody as having sealed the document.
+        if ($placement->signature_document_id) {
+            $signature = \App\Models\RequestDocument::find($placement->signature_document_id);
+
+            $imgPath = $signature?->file_url
+                ? Storage::disk('private')->path($signature->file_url)
+                : null;
+
+            if (! $imgPath || ! is_file($imgPath)) {
+                Log::warning('Notarization placement skipped: client signature missing', [
+                    'placement_id'          => $placement->id,
+                    'signature_document_id' => $placement->signature_document_id,
+                ]);
+
+                return;
+            }
+
+            $pdf->Image(
+                $imgPath, $x, $y, $w ?: 0, $h ?: 0,
+                '', '', '', false, 300, '', false, false, 0, 'CM',
+            );
+
+            return;
+        }
+
         if ($placement->type === 'asset' && $placement->asset_id) {
             $asset = \App\Models\NotaryAsset::find($placement->asset_id);
 

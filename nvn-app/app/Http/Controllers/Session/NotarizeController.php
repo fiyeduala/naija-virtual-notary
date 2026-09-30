@@ -75,6 +75,9 @@ class NotarizeController extends Controller
             'document'   => $document,
             'fileExt'    => $ext,
             'assetSets'  => $assetSets,
+            // The client's own signature image, if they sent one — see
+            // clientSignatures().
+            'clientSignatures' => $this->clientSignatures($request, $document),
             'placements' => $document->placements()->get(),
             // Which of the others are still bare, so the editor can say so
             // before the notary reaches finalize and is turned back.
@@ -134,6 +137,28 @@ class NotarizeController extends Controller
         return Storage::disk('private')->response($asset->file_url);
     }
 
+    /**
+     * Stream one of the client's own signature images (authorized).
+     *
+     * Deliberately not the same endpoint as asset(): that one is scoped to a
+     * notary's marks, this one to this request's uploads, and neither list may
+     * leak into the other. The id is checked against the same list the palette
+     * was built from, so a number edited in the URL cannot reach another
+     * client's file — or this client's identification, which is not offered
+     * here at all.
+     */
+    public function clientSignature(NotarizationRequest $request, \App\Models\RequestDocument $signature)
+    {
+        $this->authorizeNotarySide($request);
+
+        abort_unless(
+            in_array($signature->id, $this->allowedSignatureDocumentIds($request), true),
+            404,
+        );
+
+        return Storage::disk('private')->response($signature->file_url);
+    }
+
     /** Save the current set of placements (replace-all for the document). */
     public function savePlacements(NotarizationRequest $request, Request $http): JsonResponse
     {
@@ -145,6 +170,14 @@ class NotarizeController extends Controller
             // Scoped to the sets this operator was offered, not to the assets
             // table — see allowedAssetIds().
             'placements.*.asset_id'   => ['nullable', Rule::in($this->allowedAssetIds($request))],
+            // The client's own signature image. Same reasoning as asset_id: the
+            // palette is only the drawn part of the boundary, so the list is
+            // asked again here. It is scoped to this request's own uploads, and
+            // the identification scan is not in it.
+            'placements.*.signature_document_id' => [
+                'nullable',
+                Rule::in($this->allowedSignatureDocumentIds($request)),
+            ],
             'placements.*.text_value' => ['nullable', 'string', 'max:500'],
             'placements.*.page'       => ['required', 'integer', 'min:1'],
             'placements.*.x'          => ['required', 'numeric', 'between:0,1'],
@@ -153,6 +186,7 @@ class NotarizeController extends Controller
             'placements.*.height'     => ['nullable', 'numeric', 'between:0,1'],
         ], [
             'placements.*.asset_id.in' => 'That signature, stamp or seal is not one you may place on this document.',
+            'placements.*.signature_document_id.in' => 'That signature is not one the client uploaded to this request.',
         ]);
 
         $document = $this->currentDocument($request);
@@ -165,6 +199,10 @@ class NotarizeController extends Controller
                     'document_id' => $document->id,
                     'type'        => $p['type'],
                     'asset_id'    => $p['asset_id'] ?? null,
+                    // Never both: a mark is the notary's or it is the client's.
+                    'signature_document_id' => ($p['asset_id'] ?? null)
+                        ? null
+                        : ($p['signature_document_id'] ?? null),
                     'text_value'  => $p['text_value'] ?? null,
                     'page'        => $p['page'],
                     'x'           => $p['x'],
@@ -182,6 +220,7 @@ class NotarizeController extends Controller
         ], Auth::id());
 
         $this->recordPlatformSealUse($request, $document, $data['placements']);
+        $this->recordClientSignatureUse($request, $document, $data['placements']);
 
         return response()->json([
             'saved'   => count($data['placements']),
@@ -468,6 +507,91 @@ class NotarizeController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * The client's own signature images, ready to be placed on this document.
+     *
+     * Two things arrive as one: the signature drawn on the intake canvas
+     * (file_type 'client_signature'), and a photograph or scan of a signature
+     * the client uploaded as an ordinary attachment. Both mean the same thing —
+     * "this is my hand, put it on the document" — and neither needs a call.
+     *
+     * Only images qualify, and the identification scan never does: an ID card
+     * is evidence the notary looked at, not a mark anybody consented to have
+     * stamped onto a deed. Sealed output is excluded, and so is the document
+     * currently open, which cannot be pasted into itself.
+     *
+     * @return \Illuminate\Support\Collection<int, \App\Models\RequestDocument>
+     */
+    private function clientSignatures(
+        NotarizationRequest $request,
+        ?\App\Models\RequestDocument $current = null,
+    ): \Illuminate\Support\Collection {
+        return $request->documents()
+            ->where('is_final_notarized', false)
+            ->whereNotIn('file_type', ['identification', 'final_notarized'])
+            ->orderByRaw("CASE WHEN file_type = 'client_signature' THEN 0 ELSE 1 END")
+            ->orderBy('id')
+            ->get()
+            ->reject(fn ($d) => $current && $d->id === $current->id)
+            ->filter(fn ($d) => in_array(
+                strtolower(pathinfo($d->original_filename ?? $d->file_url, PATHINFO_EXTENSION)),
+                ['png', 'jpg', 'jpeg'],
+                true,
+            ))
+            ->values();
+    }
+
+    /**
+     * Every upload on this request whose image the operator may place.
+     *
+     * Asked again on save and on the image stream, for the same reason
+     * allowedAssetIds() is — the browser sends the id, so the browser cannot be
+     * the one that decides which ids are acceptable. The current document is
+     * not excluded here: the notary may have moved to another tab between
+     * placing a mark and saving, and the boundary that matters is "an image on
+     * this request", not "an image on some other tab".
+     *
+     * @return list<int>
+     */
+    private function allowedSignatureDocumentIds(NotarizationRequest $request): array
+    {
+        return $this->clientSignatures($request)->pluck('id')->all();
+    }
+
+    /**
+     * Note that the client's own signature went onto the document.
+     *
+     * The one fact nobody can reconstruct afterwards: the notary, not the
+     * client, put the client's signature where it is. It was done on the
+     * client's own uploaded signature and at their request, which is the normal
+     * way this works — and it is exactly the sort of thing that gets questioned
+     * a year later, so the record says which image, on which document, by whom
+     * and when.
+     */
+    private function recordClientSignatureUse(
+        NotarizationRequest $request,
+        \App\Models\RequestDocument $document,
+        array $placements,
+    ): void {
+        $ids = collect($placements)
+            ->reject(fn ($p) => filled($p['asset_id'] ?? null))
+            ->pluck('signature_document_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        AuditLogger::record('document.client_signature_placed', 'notarization_request', $request->id, [
+            'document_id'           => $document->id,
+            'signature_document_ids'=> $ids->all(),
+            'count'                 => collect($placements)->filter(fn ($p) => filled($p['signature_document_id'] ?? null))->count(),
+            'client_id'             => $request->client_id,
+        ], Auth::id());
     }
 
     /**
