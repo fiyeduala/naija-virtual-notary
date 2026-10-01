@@ -98,7 +98,9 @@ return [
     | It renders on every visitor-facing page and nowhere else. The admin panel
     | is excluded because staff talk to each other in the panel's own message
     | threads, and 'hidden_routes' takes the routes where a floating widget is
-    | actively unwelcome — it would sit on top of a live notarization.
+    | actively unwelcome: a live notarization, which it would sit on top of, and
+    | the notary desk, which is staff at work rather than a visitor who might
+    | need help. Route names, so a URL change does not quietly re-enable it.
     */
     'tawk' => [
         'property_id'   => env('TAWK_PROPERTY_ID', ''),
@@ -107,6 +109,13 @@ return [
             'session.join',
             'session.notarize',
             'session.done',
+            // The notary desk and the screens worked from it. This is staff
+            // working, not a visitor who might need help buying something, and
+            // the widget sits over the request cards.
+            'notary.dashboard',
+            'notary.requests.incoming',
+            'notary.requests.completed',
+            'notary.requests.show',
         ],
     ],
 

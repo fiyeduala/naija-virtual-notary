@@ -49,9 +49,20 @@ class NotaryDashboardController extends Controller
 
         // Completed stays on the personal desk even for the admin: it feeds the
         // "you have completed N" line, not a platform-wide total.
-        $completedCount = NotarizationRequest::onDeskOf($user)
-            ->where('status', RequestStatus::Completed)
-            ->count();
+        $completed = NotarizationRequest::onDeskOf($user)
+            ->where('status', RequestStatus::Completed);
+
+        $completedCount = (clone $completed)->count();
+
+        // The count on its own gave no way to reach the work itself, which is
+        // what gets asked for afterwards ("send that sealed copy again").
+        // Deliberately the same query as the count, so the number above the
+        // list and the list below it are the same set.
+        $recentCompleted = $completed
+            ->with('client', 'service', 'notary.user')
+            ->latest('completed_at')
+            ->take(5)
+            ->get();
 
         return view('notary.dashboard', [
             'user'            => $user,
@@ -59,6 +70,7 @@ class NotaryDashboardController extends Controller
             'pendingRequests' => $pendingRequests,
             'activeSessions'  => $activeSessions,
             'completedCount'  => $completedCount,
+            'recentCompleted' => $recentCompleted,
             // Admins reach this screen as the platform's own notary. Their
             // onboarding and profile pages live in the Filament panel instead.
             'isAdminDesk'     => $user->isAdmin(),

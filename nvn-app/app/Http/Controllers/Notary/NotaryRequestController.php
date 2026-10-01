@@ -49,6 +49,35 @@ class NotaryRequestController extends Controller
         ]);
     }
 
+    /**
+     * Work already finished.
+     *
+     * The desk only ever showed a count of these, so the question a notary
+     * actually asks afterwards — "what did I seal for that client?" — had no
+     * screen to answer it.
+     *
+     * Deliberately the personal desk for the admin too, exactly like the
+     * dashboard's completed figure: this is "what I finished", and the platform
+     * -wide view of every request already exists in the admin panel. Offsite
+     * jobs are excluded by scopeOnDeskOf(), which is what the rest of the desk
+     * does — they have their own screen.
+     */
+    public function completed(): View
+    {
+        $user = Auth::user();
+
+        return view('notary.requests.completed', [
+            'requests' => NotarizationRequest::onDeskOf($user)
+                ->where('status', RequestStatus::Completed)
+                ->with('client', 'service', 'notary.user', 'finalDocuments')
+                // Most recently finished first: the one being asked about is
+                // nearly always the last one done.
+                ->latest('completed_at')
+                ->paginate(20),
+            'isAdminDesk' => $user->isAdmin(),
+        ]);
+    }
+
     public function show(NotarizationRequest $request): View
     {
         $this->authorizeNotary($request);

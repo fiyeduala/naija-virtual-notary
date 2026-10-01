@@ -29,6 +29,8 @@ Route::middleware(['auth', 'verified.otp', 'role:client'])->group(function () {
 // assigned to the system-native profile or handed to them by the fallback.
 Route::middleware(['auth', 'verified.otp', 'role:notary,admin'])->group(function () {
     Route::get('/notary/requests', [NotaryRequestController::class, 'incoming'])->name('notary.requests.incoming');
+    // Declared before /{request}, or "completed" is read as a request id.
+    Route::get('/notary/requests/completed', [NotaryRequestController::class, 'completed'])->name('notary.requests.completed');
     Route::get('/notary/requests/{request}', [NotaryRequestController::class, 'show'])->name('notary.requests.show');
     Route::get('/notary/requests/{request}/documents/{document}', [NotaryRequestController::class, 'document'])->name('notary.requests.document');
     Route::post('/notary/requests/{request}/accept', [NotaryRequestController::class, 'accept'])->name('notary.requests.accept');

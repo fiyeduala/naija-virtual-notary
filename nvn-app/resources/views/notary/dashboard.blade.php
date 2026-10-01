@@ -74,6 +74,9 @@
         text-align: center;
     }
     .stat-cell:first-child { border-radius: 0; }
+    /* Only the completed cell is a link — the other two have nowhere to go. */
+    a.stat-cell { display: block; color: inherit; text-decoration: none; transition: background .15s ease; }
+    a.stat-cell:hover { background: rgba(0,0,0,.3); }
     .stat-cell-num {
         font-size: 40px;
         font-weight: 800;
@@ -322,10 +325,12 @@
             <div class="stat-cell-num">{{ $activeSessions->count() }}</div>
             <div class="stat-cell-label">Active sessions</div>
         </div>
-        <div class="stat-cell">
+        {{-- The one figure in this band that leads somewhere: the finished work
+             is still retrievable, and this is where people look for it. --}}
+        <a class="stat-cell" href="{{ route('notary.requests.completed') }}">
             <div class="stat-cell-num">{{ $completedCount }}</div>
-            <div class="stat-cell-label">Completed total</div>
-        </div>
+            <div class="stat-cell-label">Completed total &rarr;</div>
+        </a>
     </div>
 </div>
 
@@ -494,6 +499,46 @@
                 <div class="req-actions">
                     <a href="{{ route('notary.requests.show', $req) }}" class="btn btn-ghost">View</a>
                     <a href="{{ route('session.join', $req) }}" class="btn">Join session &rarr;</a>
+                </div>
+            </div>
+            @endforeach
+        </div>
+        @endif
+
+        {{-- Recently completed --}}
+        {{-- Finished work is still work you get asked about, so it needs a way
+             in and not just a number in the band above. --}}
+        @if($recentCompleted->isNotEmpty())
+        <div style="margin-bottom:32px;">
+            <div class="section-head">
+                <h2>Recently completed</h2>
+                <a href="{{ route('notary.requests.completed') }}" class="btn btn-ghost btn-sm">
+                    View all {{ $completedCount }} &rarr;
+                </a>
+            </div>
+            @foreach($recentCompleted as $req)
+            <div class="req-card">
+                <div>
+                    <div class="req-ref">{{ $req->reference }}</div>
+                    <div class="req-meta">
+                        <span>{{ $req->client?->full_name ?? 'client removed' }}</span>
+                        @if($req->service?->service_type)
+                            <span class="req-meta-dot"></span>
+                            <span>{{ $req->service->service_type }}</span>
+                        @endif
+                        @if(($isAdminDesk ?? false) && $req->notary && ! $req->notary->is_system_native)
+                            <span class="req-meta-dot"></span>
+                            <span>sealed for {{ $req->notary->user?->full_name }}</span>
+                        @endif
+                        <span class="req-meta-dot"></span>
+                        <span style="display:flex;align-items:center;gap:4px;">
+                            <x-heroicon-o-check-badge style="width:12px;height:12px;"/>
+                            {{ $req->completed_at?->diffForHumans() ?? 'completed' }}
+                        </span>
+                    </div>
+                </div>
+                <div class="req-actions">
+                    <a href="{{ route('notary.requests.show', $req) }}" class="btn btn-ghost">View</a>
                 </div>
             </div>
             @endforeach
