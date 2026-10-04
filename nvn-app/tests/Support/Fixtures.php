@@ -29,15 +29,29 @@ trait Fixtures
 {
     private int $fixtureSeq = 0;
 
-    /** Somebody who buys a notarization. */
+    /**
+     * Somebody who buys a notarization.
+     *
+     * Verified, because EnsureEmailIsVerified sits on every authenticated page
+     * and an unverified account cannot open one — so a fixture without this
+     * produces a user who can only ever be redirected. It is set here rather
+     * than per test because it bit the suite once already: config('nvn
+     * .require_otp_verification') defaults to TRUE, and a developer whose .env
+     * carries NVN_REQUIRE_OTP=false sees every page render locally and watches
+     * the same tests 302 on CI, where there is no .env to turn it off.
+     *
+     * A test that wants to prove the gate itself passes
+     * ['email_verified_at' => null] and says so.
+     */
     protected function makeClient(array $overrides = []): User
     {
         return User::create(array_merge([
-            'full_name' => 'Client ' . $this->nextSeq(),
-            'email'     => 'client' . $this->fixtureSeq . '@example.test',
-            'password'  => 'password',
-            'role'      => 'client',
-            'status'    => 'active',
+            'full_name'         => 'Client ' . $this->nextSeq(),
+            'email'             => 'client' . $this->fixtureSeq . '@example.test',
+            'password'          => 'password',
+            'role'              => 'client',
+            'status'            => 'active',
+            'email_verified_at' => now(),
         ], $overrides));
     }
 
@@ -51,12 +65,15 @@ trait Fixtures
     {
         $seq = $this->nextSeq();
 
+        // Verified for the same reason makeClient() is — the desk is behind
+        // EnsureEmailIsVerified too.
         $user = User::create([
-            'full_name' => 'Notary ' . $seq,
-            'email'     => 'notary' . $seq . '@example.test',
-            'password'  => 'password',
-            'role'      => 'notary',
-            'status'    => 'active',
+            'full_name'         => 'Notary ' . $seq,
+            'email'             => 'notary' . $seq . '@example.test',
+            'password'          => 'password',
+            'role'              => 'notary',
+            'status'            => 'active',
+            'email_verified_at' => now(),
         ]);
 
         return NotaryProfile::create(array_merge([
