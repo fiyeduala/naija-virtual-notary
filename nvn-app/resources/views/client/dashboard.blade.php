@@ -214,6 +214,15 @@
                         <span class="pill pill-pending">Draft</span>
                         <span class="req-dot"></span>
                         <span>{{ $req->created_at->format('j M Y') }}</span>
+                        @if($req->fromOrganization())
+                            {{-- Quiet, and plain text rather than a pill. The
+                                 client's price came out of this arrangement, so
+                                 they should be able to see why it is what it
+                                 is — but it is the least interesting thing on
+                                 their own row. --}}
+                            <span class="req-dot"></span>
+                            <span>via {{ $req->organizationName() }}</span>
+                        @endif
                     </div>
                 </div>
                 <span class="btn btn-sm btn-ghost">Continue &rarr;</span>
@@ -246,6 +255,15 @@
                         @elseif($req->notary)
                             <span class="req-dot"></span>
                             <span>No fixed time</span>
+                        @endif
+                        @if($req->fromOrganization())
+                            {{-- Quiet, and plain text rather than a pill. The
+                                 client's price came out of this arrangement, so
+                                 they should be able to see why it is what it
+                                 is — but it is the least interesting thing on
+                                 their own row. --}}
+                            <span class="req-dot"></span>
+                            <span>via {{ $req->organizationName() }}</span>
                         @endif
                     </div>
                     {{-- Said here as well as behind the button, because "your
@@ -331,6 +349,15 @@
                         {{-- completed_at is the real completion date; updated_at
                              shifts every time anything touches the row. --}}
                         <span>{{ ($req->completed_at ?? $req->updated_at)->format('j M Y') }}</span>
+                        @if($req->fromOrganization())
+                            {{-- Quiet, and plain text rather than a pill. The
+                                 client's price came out of this arrangement, so
+                                 they should be able to see why it is what it
+                                 is — but it is the least interesting thing on
+                                 their own row. --}}
+                            <span class="req-dot"></span>
+                            <span>via {{ $req->organizationName() }}</span>
+                        @endif
                     </div>
                 </div>
                 {{-- One badge per sealed document. A request with several is one

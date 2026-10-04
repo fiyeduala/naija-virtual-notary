@@ -33,6 +33,7 @@ class User extends Authenticatable implements FilamentUser, HasName
             'last_login_at'     => 'datetime',
             'mfa_enabled'       => 'boolean',
             'bulk_email_opt_out' => 'boolean',
+            'organization_referred_at' => 'datetime',
             'password'          => 'hashed',
         ];
     }
@@ -56,6 +57,18 @@ class User extends Authenticatable implements FilamentUser, HasName
     public function sentMessages(): HasMany
     {
         return $this->hasMany(Message::class, 'sender_user_id');
+    }
+
+    /**
+     * The partner body whose link brought this person to the platform.
+     *
+     * First touch and never overwritten — see App\Support\OrganizationReferral.
+     * Deliberately not in $fillable: it is set once, by the registration
+     * controller, from a cookie rather than from form input.
+     */
+    public function referredByOrganization(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'referred_by_organization_id');
     }
 
     // Role helpers

@@ -163,6 +163,10 @@
                 <a href="{{ route('how-it-works') }}">How It Works</a>
                 <a href="{{ route('blog.index') }}">Blog</a>
                 <a href="{{ route('partner') }}">Partner With Us</a>
+                {{-- /partner-with-us is for notaries. A government body, an
+                     embassy or a firm wanting to send us work needs its own
+                     door, and this was the only one marked "partner". --}}
+                <a href="{{ route('organization.apply.show') }}">For Organizations</a>
             </div>
             <div class="footer-col">
                 <h4>Account</h4>

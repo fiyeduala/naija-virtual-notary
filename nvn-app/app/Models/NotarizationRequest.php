@@ -44,6 +44,8 @@ class NotarizationRequest extends Model
             'category_query_resolved_at' => 'datetime',
             'is_offsite'          => 'boolean',
             'unit_fee_minor'      => 'integer',
+            'organization_commission_rate' => 'integer',
+            'organization_referred_at'     => 'datetime',
         ];
     }
 
@@ -77,6 +79,12 @@ class NotarizationRequest extends Model
     public function service(): BelongsTo
     {
         return $this->belongsTo(NotaryService::class, 'service_id');
+    }
+
+    /** The partner body that sent this work, if any. Null for most requests. */
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
     }
 
     public function documents(): HasMany
@@ -265,19 +273,32 @@ class NotarizationRequest extends Model
         return max(1, $count);
     }
 
-    /** The full fee in minor units (kobo / cents). */
-    public function feeMinor(?string $currency = null): int
+    /**
+     * What one document on this request costs, in minor units.
+     *
+     * A frozen unit price wins over the service, and is how an offsite job is
+     * priced at all — it has no service, because there is no category to
+     * choose when the platform is only doing the sealing. It is also how a
+     * partner body's negotiated rate reaches the fee. Frozen when the category
+     * is settled so that an admin changing a fee or renegotiating a rate
+     * tomorrow cannot move the total of a job somebody is halfway through
+     * paying for.
+     *
+     * Its own method because the screens that break a multi-document fee down
+     * have to show the figure actually charged, and the service's public price
+     * is the wrong one on both of those kinds of work.
+     */
+    public function unitFeeMinor(?string $currency = null): int
     {
         $currency ??= $this->currency ?: 'NGN';
 
-        // A frozen unit price wins over the service, and is how an offsite job
-        // is priced at all — it has no service, because there is no category to
-        // choose when the platform is only doing the sealing. Frozen at
-        // creation so that an admin changing the offsite fee tomorrow cannot
-        // move the total of a job somebody is halfway through paying for.
-        $unitPrice = $this->unit_fee_minor ?? $this->service?->priceFor($currency) ?? 0;
+        return (int) ($this->unit_fee_minor ?? $this->service?->priceFor($currency) ?? 0);
+    }
 
-        return $unitPrice * $this->billableDocumentCount();
+    /** The full fee in minor units (kobo / cents). */
+    public function feeMinor(?string $currency = null): int
+    {
+        return $this->unitFeeMinor($currency) * $this->billableDocumentCount();
     }
 
     /**
@@ -298,6 +319,59 @@ class NotarizationRequest extends Model
     public function isOffsite(): bool
     {
         return (bool) $this->is_offsite;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Work that came from a partner body
+    |--------------------------------------------------------------------------
+    |
+    | Whoever is at the desk needs to know this before they open anything. An
+    | organization job is priced differently, it must be notarized by the
+    | platform's own notary, and it may be one the office has promised a
+    | turnaround on. So it is marked on every screen that lists a request.
+    */
+
+    /** Did a partner body send this? */
+    public function fromOrganization(): bool
+    {
+        return $this->organization_id !== null;
+    }
+
+    /** The body's name, for a pill on the desk. Empty when there is none. */
+    public function organizationName(): string
+    {
+        return (string) ($this->organization?->name ?? '');
+    }
+
+    /**
+     * What the referring body earns on this job, in minor units.
+     *
+     * Computed from the rate FROZEN on this row, not the organization's
+     * current one — a rate renegotiated tomorrow must not change what a body
+     * earned on a job that completed last month. Zero for ordinary work and
+     * for a body on the price_only arrangement, which earns nothing.
+     */
+    public function organizationShareOf(int $grossMinor): int
+    {
+        $rate = (int) ($this->organization_commission_rate ?? 0);
+
+        return $rate > 0 ? (int) round($grossMinor * $rate / 100) : 0;
+    }
+
+    /**
+     * Scope: work referred by a partner body.
+     *
+     * Plural on purpose, and not `fromOrganization`. A scope is only reached
+     * through __call, which never fires when a real method of that name
+     * exists — and fromOrganization() above is a real method. The two would
+     * have resolved differently depending on whether they were reached from a
+     * model or from a builder, and the model's answer would always have been
+     * the boolean. One name, one meaning.
+     */
+    public function scopeFromOrganizations($query)
+    {
+        return $query->whereNotNull('organization_id');
     }
 
     /** The full fee, formatted — e.g. "₦45,000.00". */

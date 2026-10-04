@@ -40,6 +40,18 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Partner organizations sign in to a portal of their own.
+        //
+        // A separate guard rather than a fourth value on users.role: that
+        // column is a MySQL enum, widening it needs raw per-driver SQL, and
+        // every role check on the platform would have to learn about a kind of
+        // account that can neither buy a notarization nor perform one. An
+        // organization is a referrer, not a user of the service.
+        'organization' => [
+            'driver' => 'session',
+            'provider' => 'organizations',
+        ],
     ],
 
     /*
@@ -68,6 +80,11 @@ return [
             // App\Auth\LegacyUserProvider.
             'driver' => 'legacy-eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
+        ],
+
+        'organizations' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Organization::class,
         ],
 
         // 'users' => [
@@ -99,6 +116,15 @@ return [
         'users' => [
             'provider' => 'users',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+
+        // Its own token table, so an organization resetting its password
+        // cannot collide with a client who happens to use the same address.
+        'organizations' => [
+            'provider' => 'organizations',
+            'table' => 'organization_password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,
         ],

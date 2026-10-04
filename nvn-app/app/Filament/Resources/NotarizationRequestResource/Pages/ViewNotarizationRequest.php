@@ -198,6 +198,28 @@ class ViewNotarizationRequest extends ViewRecord
                         : ''))
                     ->badge()
                     ->color(fn ($record) => $record->balanceMinor() > 0 ? 'danger' : 'success'),
+                // Both hidden for ordinary work rather than shown empty, so
+                // their presence is itself the answer to "where did this come
+                // from". The rate is the one frozen on this row, not the
+                // body's current one — a rate renegotiated next month must not
+                // change what was earned on a job that completed last month,
+                // and this is the screen anybody checking that would look at.
+                TextEntry::make('organization.name')
+                    ->label('Referred by')
+                    ->badge()
+                    ->visible(fn ($record) => $record->fromOrganization()),
+                TextEntry::make('organization_commission_rate')
+                    ->label('Their cut (frozen)')
+                    ->visible(fn ($record) => $record->fromOrganization())
+                    ->state(fn ($record) => $record->organization_commission_rate > 0
+                        ? $record->organization_commission_rate . '% — '
+                            . \App\Models\NotarizationRequest::money(
+                                $record->organizationShareOf($record->amountPaidMinor()),
+                                $record->currency,
+                            ) . ' of what has been received'
+                        : 'Nothing — charged its own rate only')
+                    ->helperText(fn ($record) => 'Referred '
+                        . ($record->organization_referred_at?->format('j M Y') ?? 'at an unknown date')),
                 TextEntry::make('document_use')->label('Reason')->columnSpanFull(),
             ])->columns(2),
             // Only present once someone has queried the category, and then it

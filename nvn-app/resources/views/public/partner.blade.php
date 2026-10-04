@@ -165,6 +165,14 @@
         <a href="#apply" class="btn btn-primary btn-lg">Apply Now</a>
         <a href="{{ route('how-it-works') }}" class="btn btn-white btn-lg">How It Works</a>
     </div>
+    {{-- This page is for notaries. A body that wants to send us work is a
+         different arrangement entirely, and this was the only door marked
+         "partner" — so people arrived here for the wrong one. --}}
+    <p style="font-size:14.5px; color:rgba(255,255,255,.7); margin-top:22px;">
+        Are you a government body, embassy, law firm or company wanting to send us
+        notarization work?
+        <a href="{{ route('organization.apply.show') }}" style="color:#fff; font-weight:600; text-decoration:underline;">Apply as an organization instead</a>.
+    </p>
 </section>
 
 {{-- Benefits --}}

@@ -40,3 +40,4 @@ require __DIR__ . '/client.php';    // Phase 4 — client request flow + real cl
 require __DIR__ . '/payments.php';  // Phase 5 — request payment + notary accept/decline
 require __DIR__ . '/session.php';   // Phase 6 — verification call + notarization
 require __DIR__ . '/messages.php';  // Phase 7 — messaging + admin oversight
+require __DIR__ . '/organizations.php'; // Partner bodies — landing, application, portal

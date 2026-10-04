@@ -32,13 +32,24 @@ class NotarizationRequestResource extends Resource
         return $table
             // finalDocument decides whether the "Notarized doc" action shows —
             // eager load it so the list doesn't fire a query per row.
-            ->modifyQueryUsing(fn (Builder $query) => $query->with('finalDocument'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('finalDocument', 'organization:id,name'))
             ->columns([
                 Tables\Columns\TextColumn::make('reference')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('client.full_name')->label('Client')->searchable(),
                 // The notary of record — whose seal is on the document — even
                 // when the platform did the work. See was_fallback for that.
                 Tables\Columns\TextColumn::make('notary.user.full_name')->label('Notary')->placeholder('—'),
+                // Who sent the work, as against who sealed it. Blank for
+                // ordinary work, which is almost every row — so an
+                // organization's name here is the signal that this job
+                // was priced by an arrangement rather than by the public
+                // list, and had to be notarized in-house.
+                Tables\Columns\TextColumn::make('organization.name')
+                    ->label('Organization')
+                    ->badge()
+                    ->placeholder('—')
+                    ->searchable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('status')->badge()->formatStateUsing(fn ($state) => $state->label())
                     ->color(fn ($state) => match ($state) {
                         RequestStatus::Completed => 'success',
@@ -76,6 +87,18 @@ class NotarizationRequestResource extends Resource
                 Tables\Filters\TernaryFilter::make('hard_copy_requested')->label('Hard copy'),
                 Tables\Filters\TernaryFilter::make('was_fallback')->label('Platform-covered'),
                 Tables\Filters\TernaryFilter::make('is_offsite')->label('Offsite'),
+                // Two separate questions, and both get asked. "How much
+                // of our work comes from bodies at all" is the first,
+                // and "what has this body actually sent us" — usually
+                // just before a conversation with them — is the second.
+                Tables\Filters\Filter::make('from_organization')
+                    ->label('From an organization')
+                    ->query(fn (Builder $query) => $query->fromOrganizations()),
+                Tables\Filters\SelectFilter::make('organization_id')
+                    ->label('Organization')
+                    ->relationship('organization', 'name')
+                    ->searchable()
+                    ->preload(),
                 // The whole point of the follow-up feature is finding these
                 // people, and "status is draft or submitted" is two clicks and
                 // a thing you have to know.

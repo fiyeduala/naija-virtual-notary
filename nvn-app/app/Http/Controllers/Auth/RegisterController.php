@@ -10,6 +10,7 @@ use App\Notifications\Admin\NewUserRegisteredNotification;
 use App\Services\OtpService;
 use App\Support\AdminAlert;
 use App\Support\AuditLogger;
+use App\Support\OrganizationReferral;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
@@ -33,6 +34,12 @@ class RegisterController extends Controller
             'role'      => UserRole::Client, // public signups are always clients
             'status'    => 'active',
         ]);
+
+        // If a partner body sent them, record it now and only now. The cookie
+        // can only be read out of the browser that is actually here, and by
+        // the time their first request is paid for there may be no browser to
+        // read — see OrganizationReferral.
+        OrganizationReferral::stampUser($user, $request);
 
         AuditLogger::record('user.registered', 'user', $user->id, [], $user->id);
 

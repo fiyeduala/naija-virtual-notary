@@ -36,6 +36,7 @@
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
                 <span style="font-weight:700; font-size:15px; color:var(--ink);">{{ $req->reference }}</span>
                 <span class="pill pill-approved">Completed</span>
+                <x-org-mark :request="$req"/>
             </div>
             <div class="text-sm muted" style="margin-bottom:4px;">
                 {{ $req->service?->service_type ?? 'No category' }} &nbsp;·&nbsp; {{ $req->client?->full_name ?? 'client removed' }}

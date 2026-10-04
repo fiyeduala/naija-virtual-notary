@@ -17,6 +17,7 @@ class Payment extends Model
     public function request(): BelongsTo { return $this->belongsTo(NotarizationRequest::class, 'request_id'); }
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function payout(): BelongsTo { return $this->belongsTo(Payout::class); }
+    public function organizationPayout(): BelongsTo { return $this->belongsTo(OrganizationPayout::class); }
     public function recordedBy(): BelongsTo { return $this->belongsTo(User::class, 'recorded_by'); }
 
     public function scopeSuccessful($query) { return $query->where('status', 'successful'); }
@@ -43,5 +44,25 @@ class Payment extends Model
                      ->where('status', 'successful')
                      ->where('currency', 'NGN')
                      ->whereNull('payout_id');
+    }
+
+    /**
+     * Fees that count towards what a partner BODY is owed.
+     *
+     * The same three conditions as scopePayable(), against a different ledger
+     * column. Two independent columns rather than one shared "settled" flag:
+     * a notary payout and an organization payout are separate questions about
+     * the same money, and neither run may see the other's claim or a fee would
+     * be paid once and counted twice.
+     *
+     * USD is excluded for the same reason as above — commission is settled
+     * into a Nigerian bank account, in naira.
+     */
+    public function scopeOrganizationPayable($query)
+    {
+        return $query->where('type', 'request_fee')
+                     ->where('status', 'successful')
+                     ->where('currency', 'NGN')
+                     ->whereNull('organization_payout_id');
     }
 }

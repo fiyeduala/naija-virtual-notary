@@ -39,6 +39,17 @@ return Application::configure(basePath: dirname(__DIR__))
             'verified.otp' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
 
+        // Which sign-in page an unauthenticated visitor is sent to.
+        //
+        // Laravel has one default, and with the organization portal there are
+        // now two doors. A partner body whose session has expired was being
+        // sent to the client login page, where its credentials do not exist
+        // and nothing on the screen explains why — so the guest redirect is
+        // chosen by which part of the site was asked for.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->routeIs('organization.*')
+            ? route('organization.login')
+            : route('login'));
+
         // Paystack posts to this route from outside — exclude it from CSRF.
         $middleware->validateCsrfTokens(except: [
             'webhooks/paystack',

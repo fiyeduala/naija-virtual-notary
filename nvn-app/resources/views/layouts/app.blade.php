@@ -325,7 +325,14 @@
 
 {{-- Navbar --}}
 <nav class="navbar">
-    <a href="{{ auth()->check() ? route('dashboard') : route('home') }}" class="navbar-brand">
+    {{-- The navbar is the main site's session, so it asks the `web` guard by
+         name rather than the default one. Laravel's auth middleware makes the
+         guard it matched the default for the rest of the request — so on an
+         organization portal page the default guard is `organization`, and a
+         bare auth()->user() here would hand this block a body instead of a
+         person and reach for isNotary() on it. --}}
+    @php($navUser = auth('web')->user())
+    <a href="{{ $navUser ? route('dashboard') : route('home') }}" class="navbar-brand">
         @if ($navLogo = \App\Support\Branding::logoUrl())
             <img src="{{ $navLogo }}" alt="{{ config('app.name') }}" class="brand-logo">
         @else
@@ -340,18 +347,18 @@
         @endif
     </a>
 
-    @auth
+    @if ($navUser)
     {{-- Role is a UserRole enum — compare with the helpers, never with a
          string, or every link below silently disappears. --}}
     <div class="navbar-nav">
-        @if(auth()->user()->isNotary())
+        @if($navUser->isNotary())
             <a href="{{ route('notary.dashboard') }}"         class="nav-link {{ request()->routeIs('notary.dashboard')      ? 'active' : '' }}">Dashboard</a>
             <a href="{{ route('notary.requests.incoming') }}"  class="nav-link {{ request()->routeIs('notary.requests.*')     ? 'active' : '' }}">Requests</a>
             <a href="{{ route('notary.profile.edit') }}"       class="nav-link {{ request()->routeIs('notary.profile.*')      ? 'active' : '' }}">My Profile</a>
-        @elseif(auth()->user()->isClient())
+        @elseif($navUser->isClient())
             <a href="{{ route('client.dashboard') }}"          class="nav-link {{ request()->routeIs('client.dashboard')      ? 'active' : '' }}">Dashboard</a>
             <a href="{{ route('client.request.create') }}"     class="nav-link {{ request()->routeIs('client.request.*')      ? 'active' : '' }}">New Request</a>
-        @elseif(auth()->user()->isAdmin())
+        @elseif($navUser->isAdmin())
             <a href="{{ route('filament.admin.pages.dashboard') }}" class="nav-link">Admin Panel</a>
             <a href="{{ route('admin.notaries.index') }}"      class="nav-link {{ request()->routeIs('admin.notaries.*')     ? 'active' : '' }}">Notary Review</a>
             <a href="{{ route('admin.messages.index') }}"      class="nav-link {{ request()->routeIs('admin.messages.*')     ? 'active' : '' }}">Messages</a>
@@ -360,13 +367,13 @@
 
     <div class="navbar-right">
         @include('partials.push-toggle', ['variant' => 'nav'])
-        <span class="nav-user-name">{{ auth()->user()->full_name }}</span>
+        <span class="nav-user-name">{{ $navUser->full_name }}</span>
         <form method="POST" action="{{ route('logout') }}" style="margin:0;">
             @csrf
             <button class="btn-signout" type="submit">Sign out</button>
         </form>
     </div>
-    @endauth
+    @endif
 </nav>
 
 {{-- Flash messages (outside the page shell so full-width pages still align) --}}

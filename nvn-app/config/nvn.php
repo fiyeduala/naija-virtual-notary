@@ -120,6 +120,34 @@ return [
     ],
 
     /*
+    |---------------------------------------------------------------------------
+    | Partner organizations
+    |---------------------------------------------------------------------------
+    |
+    | Government bodies, embassies and law firms that point their applicants at
+    | the platform through a link of their own. Both of these are fallbacks for
+    | a column on the organizations table — a body may always be set up
+    | differently, and these only decide what it starts as.
+    |
+    | 'attribution_days' is how long after visiting a body's link a referral
+    | still counts towards it. Notarization is not an impulse purchase: a
+    | consulate tells somebody in the morning and they come back with the
+    | document at the weekend, so a 24-hour window would lose most of the
+    | referrals the arrangement exists to credit. Zero means lifetime.
+    |
+    | 'default_commission_rate' is what a body on the 'commission' arrangement
+    | starts at, as a percentage of what its referrals pay. It is NOT the same
+    | kind of number as 'default_commission_rate' at the top of this file —
+    | that one is the share the platform retains from a notary. This one is the
+    | share a referring body is paid, out of the platform's own half, and a body
+    | on the 'price_only' arrangement is paid none of it.
+    */
+    'organizations' => [
+        'attribution_days'       => (int) env('NVN_ORG_ATTRIBUTION_DAYS', 30),
+        'default_commission_rate' => (int) env('NVN_ORG_COMMISSION_RATE', 10),
+    ],
+
+    /*
     | Supported currencies and countries.
     */
     'currencies' => ['NGN', 'USD'],

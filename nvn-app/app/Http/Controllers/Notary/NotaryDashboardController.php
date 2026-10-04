@@ -32,7 +32,7 @@ class NotaryDashboardController extends Controller
 
         $pendingRequests = $desk()
             ->where('status', RequestStatus::Paid)
-            ->with('client', 'service', 'session', 'notary.user')
+            ->with('client', 'service', 'session', 'notary.user', 'organization:id,name')
             // Longest wait first — the only order that matters on a queue with
             // a clock running against it.
             ->oldest('paid_at')
@@ -42,7 +42,7 @@ class NotaryDashboardController extends Controller
         $activeSessions = $desk()
             ->whereIn('status', RequestStatus::active())
             ->where('status', '!=', RequestStatus::Paid->value)
-            ->with('client', 'service', 'session', 'notary.user')
+            ->with('client', 'service', 'session', 'notary.user', 'organization:id,name')
             ->latest('accepted_at')
             ->take(5)
             ->get();
@@ -59,7 +59,7 @@ class NotaryDashboardController extends Controller
         // Deliberately the same query as the count, so the number above the
         // list and the list below it are the same set.
         $recentCompleted = $completed
-            ->with('client', 'service', 'notary.user')
+            ->with('client', 'service', 'notary.user', 'organization:id,name')
             ->latest('completed_at')
             ->take(5)
             ->get();

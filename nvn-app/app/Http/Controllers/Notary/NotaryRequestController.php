@@ -8,6 +8,7 @@ use App\Models\NotarizationRequest;
 use App\Models\NotaryService;
 use App\Models\RequestDocument;
 use App\Services\RequestCategoryService;
+use App\Support\OrganizationPricing;
 use App\Services\RequestFulfillmentService;
 use App\Support\AuditLogger;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +38,7 @@ class NotaryRequestController extends Controller
 
         $query = NotarizationRequest::query()
             ->where('status', RequestStatus::Paid)
-            ->with('client', 'service', 'session', 'notary.user');
+            ->with('client', 'service', 'session', 'notary.user', 'organization:id,name');
 
         if (! $user->isAdmin()) {
             $query->onDeskOf($user);
@@ -69,7 +70,7 @@ class NotaryRequestController extends Controller
         return view('notary.requests.completed', [
             'requests' => NotarizationRequest::onDeskOf($user)
                 ->where('status', RequestStatus::Completed)
-                ->with('client', 'service', 'notary.user', 'finalDocuments')
+                ->with('client', 'service', 'notary.user', 'finalDocuments', 'organization:id,name')
                 // Most recently finished first: the one being asked about is
                 // nearly always the last one done.
                 ->latest('completed_at')
@@ -82,11 +83,17 @@ class NotaryRequestController extends Controller
     {
         $this->authorizeNotary($request);
         $request->load('client', 'service', 'session', 'documents',
-            'categorySuggestedService', 'categoryQueriedBy');
+            'categorySuggestedService', 'categoryQueriedBy', 'organization');
+
+        $services = $this->notaryServices($request);
 
         return view('notary.requests.show', [
             'request'  => $request,
-            'services' => $this->notaryServices($request),
+            'services' => $services,
+            // A partner body's referral is quoted the body's own figures, so
+            // the recommendation dropdown must not offer public prices the
+            // client will never actually be charged.
+            'quotes'   => app(OrganizationPricing::class)->quotesFor($request, $services),
         ]);
     }
 

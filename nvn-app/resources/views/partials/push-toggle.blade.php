@@ -7,7 +7,11 @@
 
     $variant: 'nav' for the dark app navbar, 'panel' for the Filament topbar.
 --}}
-@auth
+{{-- The `web` guard by name: this partial is drawn in the app navbar and in
+     the Filament topbar, and both are a person's session. An organization
+     portal page has the `organization` guard as its default, where the bare
+     @auth would pass and isAdmin() would not exist. --}}
+@auth('web')
 @php($variant = $variant ?? 'nav')
 
 <style>
@@ -63,7 +67,7 @@
 
     /* Only an admin can act on "the server has no signing keys", and only an
        admin should be shown it. Everyone else just gets no bell. */
-    const isAdmin  = @json((bool) auth()->user()->isAdmin());
+    const isAdmin  = @json((bool) auth('web')->user()->isAdmin());
 
     const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 

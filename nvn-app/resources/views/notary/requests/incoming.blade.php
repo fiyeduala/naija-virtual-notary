@@ -30,6 +30,7 @@
                 @else
                     <span class="pill pill-pending">{{ ($isAdminDesk ?? false) ? 'Awaiting notary' : 'Awaiting you' }}</span>
                 @endif
+                <x-org-mark :request="$req"/>
             </div>
             <div class="text-sm muted" style="margin-bottom:4px;">
                 {{ $req->service->service_type }} &nbsp;·&nbsp; {{ $req->client->full_name }}

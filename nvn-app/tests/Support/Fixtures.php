@@ -6,6 +6,8 @@ use App\Enums\RequestStatus;
 use App\Models\NotarizationRequest;
 use App\Models\NotaryAsset;
 use App\Models\NotaryProfile;
+use App\Models\NotaryService;
+use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\User;
 
@@ -127,6 +129,100 @@ trait Fixtures
         }
     }
 
+    /**
+     * The platform's own notary — the only one that may seal organization work.
+     *
+     * Separate from makeNotary() rather than an override of it, because
+     * is_system_native is what excludes a profile from the marketplace, from
+     * the payout run and from public listing all at once. A test that reached
+     * for it as one more override would read as though it were one more
+     * setting.
+     */
+    protected function makeSystemNotary(array $overrides = []): NotaryProfile
+    {
+        return $this->makeNotary(array_merge([
+            'is_system_native'       => true,
+            'public_listing_enabled' => false,
+        ], $overrides));
+    }
+
+    /** A priced category on a notary's own list. */
+    protected function makeService(
+        NotaryProfile $notary,
+        int $priceNgnMinor = 2500000,
+        array $overrides = [],
+    ): NotaryService {
+        return NotaryService::create(array_merge([
+            'notary_profile_id'           => $notary->id,
+            'service_type'                => 'Category ' . $this->nextSeq(),
+            'price_ngn'                   => $priceNgnMinor,
+            // Not nullable in the schema, so a fixture that left it out
+            // would fail on the insert rather than on the assertion.
+            'price_usd'                   => (int) round($priceNgnMinor / 1500),
+            'active'                      => true,
+            'estimated_duration_minutes'  => 20,
+        ], $overrides));
+    }
+
+    /**
+     * A live partner body that earns a share.
+     *
+     * Active and `commission` by default because that is the arrangement with
+     * money in it and therefore the one most tests are about. A price_only
+     * body is one override away, and the tests that need one say so out loud.
+     */
+    protected function makeOrganization(array $overrides = []): Organization
+    {
+        $seq = $this->nextSeq();
+
+        return Organization::create(array_merge([
+            'name'              => 'Body ' . $seq,
+            'slug'              => 'body-' . $seq,
+            'code'              => 'BODY' . $seq,
+            'status'            => 'active',
+            'arrangement'       => Organization::COMMISSION,
+            'commission_rate'   => 20,
+            'default_price_ngn' => 25000000,
+            'contact_name'      => 'Contact ' . $seq,
+            'contact_email'     => 'contact' . $seq . '@body.test',
+            'phone'             => '08000000' . str_pad((string) $seq, 2, '0', STR_PAD_LEFT),
+            'email'             => 'portal' . $seq . '@body.test',
+            'password'          => 'password',
+            'bank_name'         => 'Test Bank',
+            'account_name'      => 'Body ' . $seq,
+            'account_number'    => '0123456789',
+        ], $overrides));
+    }
+
+    /**
+     * A finished job that this body referred, with its fee cleared.
+     *
+     * Freezes the rate onto the request the way the live intake does, because
+     * every earning figure in the application reads the frozen rate and not
+     * the body's current one. A fixture that left it null would make the
+     * commission tests pass by computing nothing.
+     */
+    protected function makeOrganizationJob(
+        Organization $organization,
+        NotaryProfile $notary,
+        int $amountMinor = 25000000,
+        array $requestOverrides = [],
+        array $paymentOverrides = [],
+    ): Payment {
+        return $this->makeCompletedJob(
+            $notary,
+            $amountMinor,
+            array_merge([
+                'organization_id'              => $organization->id,
+                'organization_commission_rate' => $organization->earnsCommission()
+                    ? $organization->commission_rate
+                    : 0,
+                'organization_referred_at'     => now(),
+                'unit_fee_minor'               => $organization->default_price_ngn,
+            ], $requestOverrides),
+            $paymentOverrides,
+        );
+    }
     private function nextSeq(): int
     {
         return ++$this->fixtureSeq;

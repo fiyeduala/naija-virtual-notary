@@ -425,6 +425,10 @@
                     <div class="req-ref">{{ $req->reference }}</div>
                     <div class="req-meta">
                         <span>{{ $req->client->full_name }}</span>
+                        @if($req->fromOrganization())
+                            <span class="req-meta-dot"></span>
+                            <x-org-mark :request="$req"/>
+                        @endif
                         @if($req->service?->service_type)
                             <span class="req-meta-dot"></span>
                             <span>{{ $req->service->service_type }}</span>
@@ -485,6 +489,10 @@
                     <div class="req-ref">{{ $req->reference }}</div>
                     <div class="req-meta">
                         <span>{{ $req->client->full_name }}</span>
+                        @if($req->fromOrganization())
+                            <span class="req-meta-dot"></span>
+                            <x-org-mark :request="$req"/>
+                        @endif
                         <span class="req-meta-dot"></span>
                         <span class="pill">{{ $req->status->label() }}</span>
                         @if($req->session?->scheduled_start_at)
@@ -522,6 +530,10 @@
                     <div class="req-ref">{{ $req->reference }}</div>
                     <div class="req-meta">
                         <span>{{ $req->client?->full_name ?? 'client removed' }}</span>
+                        @if($req->fromOrganization())
+                            <span class="req-meta-dot"></span>
+                            <x-org-mark :request="$req"/>
+                        @endif
                         @if($req->service?->service_type)
                             <span class="req-meta-dot"></span>
                             <span>{{ $req->service->service_type }}</span>

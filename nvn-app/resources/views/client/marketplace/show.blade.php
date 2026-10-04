@@ -7,10 +7,14 @@
 @section('content')
 <div class="page-hd">
     <div class="page-hd-inner">
+        {{-- Hidden for organization work: there is no list to go back to, and
+             marketplace.index would only redirect straight back here. --}}
+        @unless ($request->fromOrganization())
         <a href="{{ route('client.marketplace.index', $request) }}" class="page-back">
             <x-heroicon-o-arrow-left style="width:13px;height:13px;"/>
             All notaries
         </a>
+        @endunless
         @php $specialties = collect($notary->specialties)->filter(); @endphp
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <h1>{{ $notary->user->full_name }}</h1>
@@ -42,6 +46,16 @@
 
         {{-- Service selection --}}
         <h2 style="margin-bottom:16px;">Choose a service</h2>
+
+        @if ($request->fromOrganization())
+            {{-- The client is paying the body's negotiated figure, so say whose
+                 rate it is. The body's own commission is not mentioned: that is
+                 between the platform and the body. --}}
+            <p class="text-sm muted" style="margin:-8px 0 16px;">
+                The fees below are {{ $request->organizationName() }}'s agreed rates, and this
+                notarization is handled by our own notary public.
+            </p>
+        @endif
         @foreach ($notary->services as $service)
             <label style="display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-bottom:1px solid var(--line); cursor:pointer;">
                 <input type="radio" name="service_id" value="{{ $service->id }}"
@@ -58,7 +72,7 @@
                         </span>
                     @endif
                 </span>
-                <span class="pill" style="flex-shrink:0;">{{ $service->displayPrice($request->currency) }}</span>
+                <span class="pill" style="flex-shrink:0;">{{ $quotes[$service->id] ?? $service->displayPrice($request->currency) }}</span>
             </label>
         @endforeach
 

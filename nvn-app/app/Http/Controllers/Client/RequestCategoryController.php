@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\NotarizationRequest;
 use App\Models\NotaryService;
 use App\Services\RequestCategoryService;
+use App\Support\OrganizationPricing;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,7 +23,10 @@ use Illuminate\View\View;
  */
 class RequestCategoryController extends Controller
 {
-    public function __construct(private RequestCategoryService $categories) {}
+    public function __construct(
+        private RequestCategoryService $categories,
+        private OrganizationPricing $pricing,
+    ) {}
 
     public function show(NotarizationRequest $request): View|RedirectResponse
     {
@@ -35,9 +39,12 @@ class RequestCategoryController extends Controller
 
         $request->load('service', 'categorySuggestedService', 'categoryQueriedBy', 'notary.user', 'documents');
 
+        $services = $this->choices($request);
+
         return view('client.request.category', [
-            'request'  => $request,
-            'services' => $this->choices($request),
+            'request'    => $request,
+            'services'   => $services,
+            'unitPrices' => $this->pricing->quotesFor($request, $services),
         ]);
     }
 

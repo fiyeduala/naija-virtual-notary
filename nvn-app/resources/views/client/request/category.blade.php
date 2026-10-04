@@ -38,6 +38,13 @@
     $currency = $request->currency ?: 'NGN';
     $paid     = \App\Models\NotarizationRequest::money($request->amountPaidMinor(), $currency);
     $count    = $request->billableDocumentCount();
+
+    // What this request was actually booked at per document. For a partner
+    // body's referral that is the body's frozen figure, which is not the
+    // public price and must not be quoted back as one.
+    $bookedUnit = $request->unit_fee_minor !== null
+        ? \App\Models\NotarizationRequest::money((int) $request->unit_fee_minor, $currency)
+        : $request->service?->displayPrice($currency);
 @endphp
 
 <div class="page-hd">
@@ -78,7 +85,7 @@
             <span class="text-sm" style="font-weight:500;">
                 {{ $request->service?->service_type ?? '—' }}
                 @if ($request->service)
-                    <span class="muted" style="font-weight:400;">— {{ $request->service->displayPrice($currency) }}</span>
+                    <span class="muted" style="font-weight:400;">— {{ $bookedUnit }}</span>
                 @endif
             </span>
         </div>
@@ -99,7 +106,10 @@
         <div class="card" style="margin-top:16px;">
             <h2 style="margin-bottom:6px;">Pick the category that fits</h2>
             <p class="text-sm muted" style="margin-bottom:18px;">
-                These are {{ $request->notary?->user?->full_name ?? 'your notary' }}&rsquo;s prices.
+                These are
+                {{ $request->fromOrganization()
+                    ? $request->organizationName() . '’s agreed rates'
+                    : ($request->notary?->user?->full_name ?? 'your notary') . '’s prices' }}.
                 {{-- Written out rather than an inline @if: Blade will not compile a
                      directive glued to the end of a word ("document@if"), and leaves
                      it as literal text while still eating the matching @endif. --}}
@@ -118,7 +128,8 @@
                             // What this choice would cost in total, and what is
                             // left after the money already on the request. The
                             // difference is the only number most clients read.
-                            $wouldCost = $service->priceFor($currency) * $count;
+                            $unit      = $unitPrices[$service->id] ?? $service->priceFor($currency);
+                            $wouldCost = $unit * $count;
                             $diff      = $wouldCost - $request->amountPaidMinor();
                             $isCurrent = $service->id === $request->service_id;
                             $isPicked  = $service->id === $request->category_suggested_service_id;
@@ -147,7 +158,7 @@
                                 </span>
                             </span>
                             <span class="cat-price">
-                                {{ $service->displayPrice($currency) }}@if ($count > 1)<span class="cat-note" style="display:block; text-align:right;">&times; {{ $count }}</span>@endif
+                                {{ \App\Models\NotarizationRequest::money($unit, $currency) }}@if ($count > 1)<span class="cat-note" style="display:block; text-align:right;">&times; {{ $count }}</span>@endif
                             </span>
                         </label>
                     @endforeach

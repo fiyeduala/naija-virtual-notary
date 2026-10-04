@@ -10,6 +10,7 @@ use App\Models\NotaryService;
 use App\Models\Session;
 use App\Services\AvailabilityService;
 use App\Support\AuditLogger;
+use App\Support\OrganizationPricing;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,8 @@ use Illuminate\View\View;
 
 class MarketplaceController extends Controller
 {
+    public function __construct(private OrganizationPricing $pricing) {}
+
     /**
      * All approved + listed notaries by default; search/filter is optional.
      *
@@ -26,9 +29,20 @@ class MarketplaceController extends Controller
      * A profile with no active service has no price to quote and cannot be booked,
      * so it is left out rather than shown as a dead end.
      */
-    public function index(NotarizationRequest $request, Request $http): View
+    public function index(NotarizationRequest $request, Request $http): View|RedirectResponse
     {
         $this->authorizeOwner($request);
+
+        // Organization work is always notarized by the platform's own notary,
+        // so there is nothing to choose. The step is skipped rather than
+        // rebuilt: client.marketplace.show already lists that notary's
+        // categories and open slots and already posts to select().
+        if ($request->fromOrganization() && $systemNotary = NotaryProfile::systemNative()->first()) {
+            return redirect()->route('client.marketplace.show', [
+                'request' => $request->id,
+                'notary'  => $systemNotary->id,
+            ]);
+        }
 
         $query = NotaryProfile::listed()
             ->whereHas('services', fn ($q) => $q->where('active', true))
@@ -60,10 +74,23 @@ class MarketplaceController extends Controller
         $this->authorizeOwner($request);
         $notary->load(['user', 'services' => fn ($q) => $q->where('active', true)]);
 
+        // An organization's referrals are quoted its own rate, which is a
+        // negotiated figure and not a discount off the public one — so the
+        // public price is replaced here, not struck through.
+        $organization = $request->organization;
+        $organization?->loadMissing('prices');
+
         return view('client.marketplace.show', [
             'request'  => $request,
             'notary'   => $notary,
             'slots'    => $availability->slotsFor($notary),
+            'quotes'   => $organization
+                ? $notary->services->mapWithKeys(fn (NotaryService $service) => [
+                    $service->id => $this->pricing->displayUnitPrice(
+                        $organization, $service, $request->currency ?: 'NGN',
+                    ),
+                ])
+                : collect(),
         ]);
     }
 
@@ -91,6 +118,18 @@ class MarketplaceController extends Controller
         $service = NotaryService::where('notary_profile_id', $notary->id)
             ->findOrFail($validated['service_id']);
 
+        // An organization's arrangement is with the platform, not with a
+        // partner. Pointing its work at a partner notary would pay that
+        // partner a share of a fee the organization negotiated and would put
+        // somebody the body never agreed to in front of its applicant, so the
+        // posted form is refused rather than quietly re-pointed.
+        if ($request->fromOrganization() && ! $notary->is_system_native) {
+            return back()->withErrors([
+                'notary_id' => 'Work from ' . $request->organizationName()
+                    . ' is notarized by our own notary public.',
+            ]);
+        }
+
         $start = ! empty($validated['slot_start']) ? Carbon::parse($validated['slot_start']) : null;
         $end = $start?->copy()->addMinutes(
             $service->estimated_duration_minutes ?: config('nvn.session_slot_minutes')
@@ -100,6 +139,12 @@ class MarketplaceController extends Controller
             'notary_id'  => $notary->id,
             'service_id' => $service->id,
         ]);
+
+        // Now, and not at intake: isPriced() reads
+        // `service_id !== null || unit_fee_minor !== null`, so freezing a
+        // price before a category existed would make a request with nothing
+        // chosen claim to be priced. A no-op for ordinary work.
+        $this->pricing->freezeOnto($request, $service);
 
         // Tentative session — confirmed once payment clears (Phase 5).
         Session::updateOrCreate(

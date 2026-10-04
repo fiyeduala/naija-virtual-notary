@@ -22,14 +22,14 @@
     <script>
         var Tawk_API = Tawk_API || {}, Tawk_LoadStart = new Date();
 
-        @auth
+        @auth('web')
         // Saves the visitor typing out who they are. Tawk's own docs call this
         // "unsecured" mode: it is a convenience for the agent, not proof of
         // identity, so nothing here is anything the person could not tell the
         // agent themselves in the first message.
         Tawk_API.visitor = {
-            name:  @json(auth()->user()->full_name),
-            email: @json(auth()->user()->email),
+            name:  @json(auth('web')->user()->full_name),
+            email: @json(auth('web')->user()->email),
         };
         @endauth
 

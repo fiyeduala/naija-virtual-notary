@@ -95,6 +95,13 @@ class RequestCategoryService
                 'category_query_resolved_at' => now(),
             ]);
 
+            // Re-freeze a partner body's price onto the new category. Without
+            // this the request would keep the old category's frozen price and
+            // the difference asked for below would be the wrong figure — the
+            // public prices would move and the organization's would not. A
+            // no-op for ordinary work.
+            app(\App\Support\OrganizationPricing::class)->freezeOnto($request, $chosen);
+
             // The slot was sized by the old service. A deed does not fit in an
             // attestation's twenty minutes, so move the end, not the start —
             // the client agreed to the start time.

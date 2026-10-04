@@ -61,6 +61,21 @@
                 <span class="text-sm muted">Client</span>
                 <span class="text-sm" style="font-weight:500;">{{ $request->client->full_name }}</span>
             </div>
+            @if ($request->fromOrganization())
+            {{-- Named in full here rather than shown as a pill. This is the
+                 screen the job is worked from, and what it has to say is not
+                 just "an organization" but which one, at what price, and that
+                 it is ours to seal. --}}
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 0; border-bottom:1px solid var(--line);">
+                <span class="text-sm muted">Referred by</span>
+                <span class="text-sm" style="font-weight:600; text-align:right;">
+                    {{ $request->organizationName() }}
+                    <span class="muted" style="font-weight:400; display:block;">
+                        Agreed rate &mdash; notarized in-house
+                    </span>
+                </span>
+            </div>
+            @endif
             <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--line);">
                 <span class="text-sm muted">Service</span>
                 <span class="text-sm" style="font-weight:500;">{{ $request->service->service_type }}</span>
@@ -73,7 +88,7 @@
                          quoting from this line has to see what the client paid. --}}
                     @if (($count = $request->billableDocumentCount()) > 1)
                         <span class="muted" style="font-weight:400;">
-                            ({{ $request->service->displayPrice($request->currency) }} &times; {{ $count }} documents)
+                            ({{ \App\Models\NotarizationRequest::money($request->unitFeeMinor(), $request->currency ?: 'NGN') }} &times; {{ $count }} documents)
                         </span>
                     @endif
                 </span>
@@ -202,7 +217,7 @@
                 @foreach ($services as $service)
                     @continue($service->id === $request->service_id)
                     <option value="{{ $service->id }}">
-                        {{ $service->service_type }} — {{ $service->displayPrice($request->currency) }}
+                        {{ $service->service_type }} — {{ \App\Models\NotarizationRequest::money($quotes[$service->id] ?? $service->priceFor($request->currency ?: 'NGN'), $request->currency ?: 'NGN') }}
                     </option>
                 @endforeach
             </select>

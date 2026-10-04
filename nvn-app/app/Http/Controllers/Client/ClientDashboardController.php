@@ -28,12 +28,13 @@ class ClientDashboardController extends Controller
             // service and documents feed isCategoryBlocked() on every row, which
             // otherwise costs three queries a request just to decide whether to
             // draw a banner.
-            ->with('notary.user', 'session', 'service', 'documents')
+            ->with('notary.user', 'session', 'service', 'documents', 'organization:id,name')
             ->latest()
             ->get();
 
         $drafts = NotarizationRequest::where('client_id', $userId)
             ->where('status', RequestStatus::Draft)
+            ->with('organization:id,name')
             ->latest()
             ->get();
 
@@ -42,7 +43,7 @@ class ClientDashboardController extends Controller
             // Every sealed PDF, not just the first — a request with three
             // documents has three finished files and the client paid for all of
             // them, so all of them have to be reachable from here.
-            ->with('finalDocuments.sourceDocument')
+            ->with('finalDocuments.sourceDocument', 'organization:id,name')
             ->latest()
             ->get();
 

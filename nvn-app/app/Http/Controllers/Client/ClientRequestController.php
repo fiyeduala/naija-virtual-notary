@@ -11,6 +11,7 @@ use App\Notifications\Admin\RequestAwaitingPaymentNotification;
 use App\Support\AdminAlert;
 use App\Support\AuditLogger;
 use App\Support\MetaAttribution;
+use App\Support\OrganizationReferral;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +40,13 @@ class ClientRequestController extends Controller
         $user = Auth::user();
         $data = $request->validated();
 
-        $nrequest = DB::transaction(function () use ($user, $request, $data) {
+        // The same reasoning as the advert attribution below, and the same one
+        // moment to do it in. The rate is frozen alongside the body rather
+        // than read later, so renegotiating tomorrow cannot change what was
+        // earned on a job somebody is halfway through paying for.
+        $organization = OrganizationReferral::forRequest($user, $request);
+
+        $nrequest = DB::transaction(function () use ($user, $request, $data, $organization) {
             $nrequest = NotarizationRequest::create([
                 'client_id'           => $user->id,
                 'status'              => RequestStatus::Draft,
@@ -66,6 +73,11 @@ class ClientRequestController extends Controller
                 // Empty for everyone who did not arrive on an advert, which is
                 // most people. See App\Support\MetaAttribution.
                 'attribution' => MetaAttribution::capture($request) ?: null,
+
+                // Null for ordinary work, which is almost all of it.
+                'organization_id'              => $organization?->id,
+                'organization_commission_rate' => $organization?->commission_rate,
+                'organization_referred_at'     => $organization ? now() : null,
             ]);
 
             // Primary document
