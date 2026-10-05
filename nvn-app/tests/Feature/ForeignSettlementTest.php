@@ -112,20 +112,30 @@ class ForeignSettlementTest extends TestCase
         $this->assertNull($payment->fresh()->payout_id);
     }
 
-    public function test_each_currency_gets_its_own_payout(): void
+    /**
+     * Several dollar jobs make one dollar payout, grouped by currency.
+     *
+     * Two currencies in one run is the case the grouping exists for, and it
+     * cannot be tested here: `notarization_requests.currency` is a MySQL enum
+     * of exactly NGN and USD, so a third currency is truncated on insert — it
+     * passes on SQLite, which has no enums, and errors on MariaDB. The
+     * platform supports two currencies and only one of them is foreign, so
+     * what is provable is that same-currency jobs add up into a single row
+     * rather than one payout each.
+     */
+    public function test_several_dollar_jobs_become_one_dollar_payout(): void
     {
         $notary = $this->makeNotary(['commission_rate' => 50]);
 
         $this->makeCompletedJob($notary, 10000, ['currency' => 'USD'], ['currency' => 'USD']);
-        $this->makeCompletedJob($notary, 8000, ['currency' => 'GBP'], ['currency' => 'GBP']);
+        $this->makeCompletedJob($notary, 8000, ['currency' => 'USD'], ['currency' => 'USD']);
 
         $created = app(PayoutService::class)->generateForeign($notary);
 
-        // Never one payout holding two currencies — that total would be a
-        // number in no currency at all.
-        $this->assertSame(['GBP', 'USD'], $created->pluck('currency')->sort()->values()->all());
-        $this->assertSame(4000, $created->firstWhere('currency', 'GBP')->amount);
-        $this->assertSame(5000, $created->firstWhere('currency', 'USD')->amount);
+        $this->assertCount(1, $created);
+        $this->assertSame('USD', $created->first()->currency);
+        $this->assertSame(9000, $created->first()->amount);
+        $this->assertSame(2, $created->first()->payments()->count());
     }
 
     /**
