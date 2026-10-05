@@ -12,6 +12,7 @@ use App\Support\AdminAlert;
 use App\Support\AuditLogger;
 use App\Support\MetaAttribution;
 use App\Support\OrganizationReferral;
+use App\Support\VisitorCurrency;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -26,11 +27,27 @@ class ClientRequestController extends Controller
         $user = Auth::user();
         [$first, $last] = $this->splitName($user->full_name);
 
+        // A client in Nigeria is quoted naira and a client abroad dollars,
+        // without either having to find the dropdown. The dropdown stays, as
+        // the override — see App\Support\VisitorCurrency for why a detected
+        // currency is a default and never a verdict.
+        $currencies = array_values(array_filter(
+            config('nvn.currencies'),
+            fn (string $currency) => VisitorCurrency::canCharge($currency),
+        ));
+
         return view('client.request.intake', [
             'first_name' => $first,
             'last_name'  => $last,
             'email'      => $user->email,
             'phone'      => $user->phone,
+
+            // Only what can actually be collected is offered. A currency in
+            // this list that checkout would refuse is a dead end dressed as a
+            // choice, so while the dollar valve is shut dollars are not on it.
+            'currencies'       => $currencies,
+            'currencyDefault'  => VisitorCurrency::chargeable(VisitorCurrency::for(request())),
+            'detectedAbroad'   => VisitorCurrency::detect(request()) === 'USD',
         ]);
     }
 
@@ -40,18 +57,32 @@ class ClientRequestController extends Controller
         $user = Auth::user();
         $data = $request->validated();
 
+        // Their choice outranks the header from here on, for this visit and
+        // for any further request they start in it.
+        VisitorCurrency::remember($request, $data['currency']);
+
+        // One currency per request, always. NotarizationRequest::amountPaidMinor()
+        // sums payment amounts with no currency filter — correctly, because a
+        // request is settled in one currency — so a row quoted in dollars and
+        // part-paid in naira would have kobo added to cents and report a
+        // balance that is arithmetic nonsense. A category correction asks for
+        // a difference as a second payment, which makes that reachable rather
+        // than theoretical. So the currency a request is created in is one we
+        // can actually collect, and nothing is converted at a rate nobody set.
+        $currency = VisitorCurrency::chargeable($data['currency']);
+
         // The same reasoning as the advert attribution below, and the same one
         // moment to do it in. The rate is frozen alongside the body rather
         // than read later, so renegotiating tomorrow cannot change what was
         // earned on a job somebody is halfway through paying for.
         $organization = OrganizationReferral::forRequest($user, $request);
 
-        $nrequest = DB::transaction(function () use ($user, $request, $data, $organization) {
+        $nrequest = DB::transaction(function () use ($user, $request, $data, $organization, $currency) {
             $nrequest = NotarizationRequest::create([
                 'client_id'           => $user->id,
                 'status'              => RequestStatus::Draft,
                 'document_use'        => $data['document_use'],
-                'currency'            => $data['currency'],
+                'currency'            => $currency,
                 'hard_copy_requested' => (bool) $data['hard_copy'],
                 'delivery_address'    => $data['hard_copy'] ? [
                     'street'      => $data['street'] ?? null,

@@ -314,6 +314,15 @@ class PlatformSettingsPage extends Page implements HasForms
                                 Forms\Components\TextInput::make('price_usd')
                                     ->label('Price USD ($)')
                                     ->helperText('Enter in dollars — e.g. 25 for $25.00')
+                                    // A client abroad is quoted from this column, so a figure written by
+                                    // dropping the naira zeros becomes a real price list. Warned about,
+                                    // never blocked — see NotaryService::usdPriceWarning().
+                                    ->live(onBlur: true)
+                                    ->hint(fn (Forms\Get $get) => NotaryService::usdPriceWarning(
+                                        (float) $get('price_ngn'),
+                                        (float) $get('price_usd'),
+                                    ))
+                                    ->hintColor('warning')
                                     ->numeric()
                                     ->prefix('$')
                                     ->minValue(0)

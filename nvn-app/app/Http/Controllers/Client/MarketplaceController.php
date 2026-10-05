@@ -130,6 +130,20 @@ class MarketplaceController extends Controller
             ]);
         }
 
+        // A category with no dollar price would be notarized for nothing.
+        // unit_fee_minor stays null for ordinary work, so feeMinor() reads
+        // price_usd live — and a column left at 0 makes a free notarization
+        // rather than an obvious error. Refused here, at the one point a
+        // client fixes a category to a request, with the naira price offered
+        // as the way forward. See NotaryService::usdPriceWarning() for the
+        // admin-side half of this, which warns while a price is being typed.
+        if ($request->currency === 'USD' && ! $service->hasUsableUsdPrice()) {
+            return back()->withErrors([
+                'service_id' => 'We cannot price that category in dollars yet.'
+                    . ' Choose another, or switch this request to naira.',
+            ]);
+        }
+
         $start = ! empty($validated['slot_start']) ? Carbon::parse($validated['slot_start']) : null;
         $end = $start?->copy()->addMinutes(
             $service->estimated_duration_minutes ?: config('nvn.session_slot_minutes')

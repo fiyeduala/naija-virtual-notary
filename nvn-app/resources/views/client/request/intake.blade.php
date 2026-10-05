@@ -173,12 +173,33 @@
             </label>
         </div>
 
-        <label for="currency">Preferred currency</label>
-        <select id="currency" name="currency" required>
-            @foreach (config('nvn.currencies') as $cur)
-                <option value="{{ $cur }}" @selected(old('currency')===$cur)>{{ $cur }}</option>
-            @endforeach
-        </select>
+        {{-- Currency.
+             Pre-selected from where the visitor is, and still a choice. A
+             Nigerian abroad paying with a naira card and a Lagos client
+             paying with a dollar card both exist, so the detected currency is
+             the default and never a cage. $currencies holds only what
+             checkout can actually collect, so when there is one of them there
+             is nothing to choose and a dropdown of one option would only look
+             broken. --}}
+        @if (count($currencies) > 1)
+            <label for="currency">Preferred currency</label>
+            <select id="currency" name="currency" required>
+                @foreach ($currencies as $cur)
+                    <option value="{{ $cur }}" @selected(old('currency', $currencyDefault)===$cur)>{{ $cur }}</option>
+                @endforeach
+            </select>
+            @if ($detectedAbroad)
+                <p class="text-sm muted" style="margin-top:-6px;">
+                    You look to be outside Nigeria, so we have quoted you in dollars.
+                    Change it here if you would rather pay in naira.
+                </p>
+            @endif
+        @else
+            <input type="hidden" name="currency" value="{{ $currencies[0] }}">
+            <p class="text-sm muted">
+                Priced in {{ $currencies[0] === 'USD' ? 'US Dollars ($)' : 'Nigerian Naira (₦)' }}.
+            </p>
+        @endif
 
         {{-- Delivery --}}
         <h2 style="margin-top:28px; margin-bottom:14px;">Delivery</h2>

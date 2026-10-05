@@ -154,6 +154,41 @@ return [
     'countries'  => ['Nigeria', 'Ghana', 'United Kingdom', 'United States', 'Canada', 'Other'],
 
     /*
+    | Which currency a visitor is quoted in, and whether we can take it.
+    |
+    | A client in Nigeria should be quoted naira and a client abroad dollars,
+    | without either of them having to find a dropdown. The country comes from
+    | Cloudflare's CF-IPCountry header — see App\Support\VisitorCurrency for
+    | why that header and not a browser permission prompt or a GeoIP database.
+    |
+    | `usd_checkout` is the valve, and it is OFF until Paystack is known to
+    | accept dollars on this account. Collecting USD needs it enabled on the
+    | merchant account; until then `currency/initialize` rejects the
+    | transaction, and a client abroad would meet a dead checkout.
+    |
+    | While the valve is shut, dollars are not offered at all: a visitor abroad
+    | is quoted naira and charged naira. Quoting dollars and charging naira on
+    | the same request was considered and rejected, because it is one currency
+    | per request or nothing — NotarizationRequest::amountPaidMinor() sums
+    | payment amounts with no currency filter, correctly, since a request
+    | settles in one currency. A row quoted in dollars and part-paid in naira
+    | would add cents to kobo and report a balance that is arithmetic nonsense,
+    | and the category-correction flow asks for the difference as a second
+    | payment, so that is reachable rather than theoretical. Opening the valve
+    | makes a visitor abroad quoted AND charged in dollars.
+    |
+    | `reference_rate` is not used to charge anybody and never converts money.
+    | It exists so the admin screens can say "this dollar price looks like the
+    | naira one with the zeros dropped" — a sanity check needs a yardstick.
+    */
+    'currency' => [
+        'by_location'    => (bool) env('NVN_CURRENCY_BY_LOCATION', true),
+        'usd_checkout'   => (bool) env('NVN_USD_CHECKOUT', false),
+        'home_country'   => env('NVN_HOME_COUNTRY', 'NG'),
+        'reference_rate' => (int) env('NVN_USD_REFERENCE_RATE', 1550),
+    ],
+
+    /*
     | OTP email verification gate.
     | Set to false (NVN_REQUIRE_OTP=false in .env) to bypass the gate during
     | development / UAT. Must be true before going to production.

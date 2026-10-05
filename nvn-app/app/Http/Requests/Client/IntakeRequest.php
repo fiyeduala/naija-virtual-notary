@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Client;
 
+use App\Support\VisitorCurrency;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -30,8 +31,18 @@ class IntakeRequest extends FormRequest
             // Optional in-app signature (base64 PNG data URI from canvas)
             'client_signature' => ['nullable', 'string', 'starts_with:data:image/png;base64,'],
 
-            // Currency for this request
-            'currency'     => ['required', Rule::in(config('nvn.currencies'))],
+            // Currency for this request.
+            //
+            // Narrowed to what checkout can actually take, not every currency
+            // the platform knows about. While the dollar valve is shut (see
+            // config/nvn.php) a posted USD would otherwise be accepted here
+            // and quietly turned into naira further down; rejected is better
+            // than silently changed, because the figure a client agreed to is
+            // the one they should be charged.
+            'currency'     => ['required', Rule::in(array_values(array_filter(
+                config('nvn.currencies'),
+                fn (string $currency) => VisitorCurrency::canCharge($currency),
+            )))],
 
             // Hard-copy delivery
             'hard_copy'    => ['required', 'boolean'],

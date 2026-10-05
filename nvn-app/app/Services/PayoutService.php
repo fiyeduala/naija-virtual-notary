@@ -63,6 +63,47 @@ class PayoutService
     }
 
     /**
+     * Earned on a foreign-currency job, and therefore not payable from here.
+     *
+     * Payment::scopePayable() excludes anything but naira, because a Paystack
+     * transfer reaches a Nigerian bank account in naira and a dollar fee
+     * cannot ride along without being converted at a rate nobody set. That is
+     * still right. What was wrong is that such a fee then appeared NOWHERE: it
+     * was neither owed nor paid nor flagged, so a notary who served a client
+     * abroad saw the job complete and the money vanish from every screen.
+     *
+     * This does not pay anybody and deliberately does not convert anything. It
+     * answers one question — "is there work of mine that earned something the
+     * payout run cannot send?" — so the figure can be shown beside the naira
+     * balance and settled by hand. The share is computed in the job's own
+     * currency, and the currency is returned with it, because adding cents to
+     * kobo is exactly the mistake this is here to prevent.
+     *
+     * @return SupportCollection<string, array{count: int, shareMinor: int}>
+     *         Keyed by currency, e.g. ['USD' => ['count' => 2, 'shareMinor' => 4000]].
+     */
+    public function unpayableEarnings(NotaryProfile $profile): SupportCollection
+    {
+        return Payment::query()
+            ->where('type', 'request_fee')
+            ->where('status', 'successful')
+            ->where('currency', '!=', 'NGN')
+            ->whereNull('payout_id')
+            ->whereHas('request', fn ($q) => $q
+                ->where('notary_id', $profile->id)
+                ->where('status', RequestStatus::Completed->value)
+                ->where('is_offsite', false))
+            ->get(['id', 'amount', 'currency'])
+            ->groupBy('currency')
+            ->map(fn (SupportCollection|Collection $payments) => [
+                'count'      => $payments->count(),
+                'shareMinor' => (int) $payments->sum(
+                    fn (Payment $payment) => $profile->notaryShare($payment->amount),
+                ),
+            ]);
+    }
+
+    /**
      * Generate a payout per notary with something owed.
      *
      * The platform's own notary is skipped: the platform does not transfer

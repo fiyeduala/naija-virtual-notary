@@ -87,6 +87,16 @@ class ViewNotaryProfile extends ViewRecord
                                 ->required(),
                             Forms\Components\TextInput::make('price_usd')
                                 ->label('Price USD ($ — in dollars, not cents)')
+                                // A client abroad is quoted from this column, so a figure
+                                // written by dropping the naira zeros becomes a real price
+                                // list. Warned about, never blocked — see
+                                // NotaryService::usdPriceWarning().
+                                ->live(onBlur: true)
+                                ->hint(fn (Forms\Get $get) => NotaryService::usdPriceWarning(
+                                    (float) $get('price_ngn'),
+                                    (float) $get('price_usd'),
+                                ))
+                                ->hintColor('warning')
                                 ->numeric()
                                 ->prefix('$')
                                 ->required(),

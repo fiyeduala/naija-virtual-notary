@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\PayoutResource\Pages;
 
 use App\Filament\Resources\PayoutResource;
+use App\Models\NotarizationRequest;
 use App\Models\NotaryProfile;
 use App\Services\PayoutService;
 use Filament\Actions;
@@ -70,8 +71,29 @@ class ListPayouts extends ListRecords
             ->filter(fn (array $row) => $row['owed'] > 0)
             ->sortByDesc('owed');
 
+        // Work that earned something a payout run cannot send. Not added to
+        // any total above — a dollar share and a naira share are different
+        // units — but said out loud, because a notary whose client was abroad
+        // can otherwise watch a completed job earn nothing on every screen
+        // and have no way to ask about it. See PayoutService::unpayableEarnings().
+        $foreign = NotaryProfile::query()
+            ->where('is_system_native', false)
+            ->with('user')
+            ->get()
+            ->flatMap(fn (NotaryProfile $profile) => $payouts->unpayableEarnings($profile)
+                ->map(fn (array $row, string $currency) => ($profile->user?->full_name ?? 'Notary #' . $profile->id)
+                    . ' — ' . NotarizationRequest::money($row['shareMinor'], $currency)
+                    . ' on ' . $row['count'] . ' ' . str('job')->plural($row['count']))
+                ->values())
+            ->implode('; ');
+
+        $note = $foreign === '' ? '' : ' Separately, and NOT included above, these cannot be sent'
+            . ' by transfer because the client paid in a foreign currency — settle them by hand: '
+            . $foreign . '.';
+
         if ($lines->isEmpty()) {
-            return 'No notary has unpaid fees from a completed job right now, so this would create nothing.';
+            return 'No notary has unpaid naira fees from a completed job right now, so this would create nothing.'
+                . $note;
         }
 
         $detail = $lines
@@ -80,6 +102,7 @@ class ListPayouts extends ListRecords
 
         return 'This creates ' . $lines->count() . ' ' . str('payout')->plural($lines->count())
             . ' totalling ' . PayoutResource::money($lines->sum('owed')) . ': ' . $detail
-            . '. Generating only records what is owed — no money moves until you send each one.';
+            . '. Generating only records what is owed — no money moves until you send each one.'
+            . $note;
     }
 }
