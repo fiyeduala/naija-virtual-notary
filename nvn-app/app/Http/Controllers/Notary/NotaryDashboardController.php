@@ -156,14 +156,40 @@ class NotaryDashboardController extends Controller
         $profile = $user->notaryProfile;
 
         if (! $profile || $profile->is_system_native) {
-            return ['owed' => 0, 'paidOut' => 0];
+            return ['owed' => 0, 'paidOut' => 0, 'foreign' => []];
         }
 
+        $payouts = app(PayoutService::class);
+
         return [
-            'owed'    => app(PayoutService::class)->owed($profile),
+            'owed' => $payouts->owed($profile),
+
+            // Naira only, and not as a tidiness measure. A foreign payout now
+            // exists as a real row, and summing `amount` across currencies
+            // would add cents to this figure as though they were kobo — the
+            // notary would be shown a total they never received.
             'paidOut' => (int) Payout::where('notary_profile_id', $profile->id)
                 ->where('status', 'paid')
+                ->where('currency', 'NGN')
                 ->sum('amount'),
+
+            // Work paid for in a foreign currency, kept in its own units.
+            // Empty for almost everybody. Each line says what was earned, and
+            // what naira actually arrived once the platform settled it by hand
+            // — which is the only figure the notary can check against their
+            // own bank statement.
+            'foreign' => Payout::where('notary_profile_id', $profile->id)
+                ->where('currency', '!=', 'NGN')
+                ->get(['amount', 'currency', 'status', 'settled_amount', 'processed_at'])
+                ->map(fn (Payout $payout) => [
+                    'earned'    => NotarizationRequest::money($payout->amount, $payout->currency),
+                    'sent'      => $payout->settled_amount
+                        ? NotarizationRequest::money($payout->settled_amount, 'NGN')
+                        : null,
+                    'paid'      => $payout->isPaid(),
+                    'processed' => $payout->processed_at,
+                ])
+                ->all(),
         ];
     }
 

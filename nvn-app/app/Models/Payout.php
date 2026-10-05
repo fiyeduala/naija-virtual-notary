@@ -15,6 +15,7 @@ class Payout extends Model
         return [
             'amount'            => 'integer',
             'commission_amount' => 'integer',
+            'settled_amount'    => 'integer',
             'period_start'      => 'date',
             'period_end'        => 'date',
             'processed_at'      => 'datetime',
@@ -58,15 +59,48 @@ class Payout extends Model
     }
 
     /**
+     * Denominated in something a Paystack transfer cannot send.
+     *
+     * A dollar payout exists because a client abroad paid dollars; the notary
+     * has a Nigerian account and can only receive naira. The earning is real
+     * and recorded in the currency it was earned in — settling it is a
+     * by-hand job, and the naira that actually left the bank is recorded
+     * separately. See PayoutService::generateForeign().
+     */
+    public function isForeign(): bool
+    {
+        return $this->currency !== 'NGN';
+    }
+
+    /**
      * Sendable only with a verified account that has a transfer recipient, and
      * only when the platform is switched on for automatic transfers at all.
+     *
+     * Naira only, and that clause is load-bearing rather than tidy:
+     * initiateTransfer() takes a bare integer of minor units and Paystack
+     * sends naira, so handing it a payout of 5,000 cents would quietly wire
+     * ₦50 against a $50 debt. Nothing downstream would notice.
      */
     public function isSendable(): bool
     {
         return \App\Support\Settings::paystackTransfersEnabled()
+            && ! $this->isForeign()
             && in_array($this->status, ['pending', 'failed'], true)
             && $this->amount > 0
             && $this->notaryProfile?->bankDetails?->isPayable() === true;
+    }
+
+    /** The rate this settlement was actually done at, or null if it is moot. */
+    public function impliedRate(): ?float
+    {
+        if (! $this->settled_amount || ! $this->amount) {
+            return null;
+        }
+
+        // Both sides are minor units, so the factors of 100 cancel and this is
+        // naira-per-dollar directly. Derived rather than stored, so it can
+        // never disagree with the two figures it comes from.
+        return $this->settled_amount / $this->amount;
     }
 
     /** Gross fees settled here — the notary's share plus the platform's. */

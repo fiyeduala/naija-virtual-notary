@@ -90,7 +90,15 @@ class PayoutResource extends Resource
                     ->state(fn (Payout $p) => $p->status === 'paid' ? $p->settlementLabel() : '—')
                     ->badge()
                     ->color(fn (Payout $p) => $p->isOffline() ? 'gray' : 'info')
-                    ->description(fn (Payout $p) => $p->settlement_reference),
+                    // For a foreign payout the figure in the Notary-is-paid
+                    // column is not what left the bank, so the naira and the
+                    // rate sit under the badge rather than one modal away.
+                    ->description(fn (Payout $p) => $p->settled_amount
+                        ? '₦' . number_format($p->settled_amount / 100, 2)
+                            . ' sent @ ₦' . number_format((float) $p->impliedRate(), 2)
+                            . '/' . ($p->currency === 'USD' ? '$' : $p->currency)
+                            . ($p->settlement_reference ? ' · ' . $p->settlement_reference : '')
+                        : $p->settlement_reference),
                 // Only meaningful while the platform is actually sending
                 // transfers; paying by hand needs no Paystack recipient.
                 Tables\Columns\IconColumn::make('payable')->label('Account ready')
@@ -122,7 +130,11 @@ class PayoutResource extends Resource
                     // Hidden entirely when automatic transfers are off, rather
                     // than shown greyed out: a button that can never work is
                     // noise, and "Record as paid" is the real workflow then.
+                    // Foreign payouts are excluded outright, not greyed out:
+                    // Paystack sends naira, so there is no version of this
+                    // button that could ever settle a dollar debt.
                     ->visible(fn (Payout $p) => Settings::paystackTransfersEnabled()
+                        && ! $p->isForeign()
                         && in_array($p->status, ['pending', 'failed'], true))
                     ->disabled(fn (Payout $p) => ! $p->isSendable())
                     ->requiresConfirmation()
@@ -147,11 +159,19 @@ class PayoutResource extends Resource
                     // quiet fallback when Paystack is doing the work.
                     ->color(fn () => Settings::paystackTransfersEnabled() ? 'gray' : 'success')
                     ->visible(fn (Payout $p) => $p->isSettleable())
-                    ->modalHeading('Record a payout you sent yourself')
-                    ->modalDescription(fn (Payout $p) => 'Confirms that '
-                        . static::money($p->amount, $p->currency) . ' has already reached '
-                        . ($p->notaryProfile?->user?->full_name ?? 'the notary')
-                        . '. This settles the fees on the ledger — it does not move any money.'
+                    ->modalHeading(fn (Payout $p) => $p->isForeign()
+                        ? 'Record what you sent for a ' . $p->currency . ' job'
+                        : 'Record a payout you sent yourself')
+                    ->modalDescription(fn (Payout $p) => ($p->isForeign()
+                        ? 'The client paid in ' . $p->currency . ', so this earned '
+                            . static::money($p->amount, $p->currency)
+                            . ' — but a transfer to a Nigerian account goes in naira, which is why'
+                            . ' this one could not be sent automatically. Tell us what you actually'
+                            . ' sent and it comes off the ledger for good.'
+                        : 'Confirms that '
+                            . static::money($p->amount, $p->currency) . ' has already reached '
+                            . ($p->notaryProfile?->user?->full_name ?? 'the notary')
+                            . '. This settles the fees on the ledger — it does not move any money.')
                         // The one genuinely risky case: a Paystack transfer is
                         // still in flight and may yet land on top of this.
                         . ($p->isProcessing()
@@ -173,6 +193,29 @@ class PayoutResource extends Resource
                             ->default(now())
                             ->maxDate(now())
                             ->required(),
+                        // The whole point of a foreign settlement: the debt is
+                        // in dollars and the transfer was in naira, so what
+                        // left the bank has to be written down or the two can
+                        // never be reconciled. Required for a foreign payout
+                        // and absent entirely for an ordinary one, where
+                        // `amount` already is what was sent.
+                        \Filament\Forms\Components\TextInput::make('settled_amount')
+                            ->label('Naira you actually sent')
+                            ->prefix('₦')
+                            ->numeric()
+                            ->minValue(0.01)
+                            ->required()
+                            ->visible(fn (Payout $p) => $p->isForeign())
+                            ->helperText(fn (Payout $p) => 'This payout is '
+                                . static::money($p->amount, $p->currency)
+                                . '. Enter the naira that left your account — we do not convert'
+                                . ' anything, so the rate on the record is the one you used.')
+                            ->live(onBlur: true)
+                            ->hint(fn ($state, Payout $p) => $state > 0 && $p->amount > 0
+                                ? 'A rate of ₦' . number_format(((float) $state * 100) / $p->amount, 2)
+                                    . ' to the ' . ($p->currency === 'USD' ? 'dollar' : $p->currency)
+                                : null)
+                            ->hintColor('info'),
                         \Filament\Forms\Components\TextInput::make('reference')
                             ->label('Your bank\'s reference')
                             ->placeholder('e.g. the transfer session ID from your bank app')

@@ -176,6 +176,79 @@ class PayoutService
     }
 
     /**
+     * Payout rows for work the transfer run cannot send, so it can be ticked off.
+     *
+     * unpayableEarnings() made a dollar job visible, which was the first half
+     * of the problem. This is the second: without a payout row there is no
+     * ledger entry to settle, so `payments.payout_id` stays null forever and
+     * the same job is reported as outstanding every time the screen is opened
+     * — including after the notary has been paid. An admin cannot tell a job
+     * they have settled from one they have not, which is worse than the
+     * original silence.
+     *
+     * One payout per currency, denominated in that currency. It is created
+     * `pending` like any other and is deliberately NOT sendable — see
+     * Payout::isSendable(), which refuses a foreign payout outright rather
+     * than wiring naira against a dollar figure. Recording it as paid is the
+     * only way it can be settled, and that is where the naira actually sent
+     * gets written down.
+     *
+     * Nothing is converted here. The rate belongs to whoever made the
+     * transfer, on the day they made it.
+     *
+     * @return SupportCollection<int, Payout>
+     */
+    public function generateForeign(NotaryProfile $profile, ?int $initiatedBy = null): SupportCollection
+    {
+        return DB::transaction(function () use ($profile, $initiatedBy) {
+            $payments = Payment::query()
+                ->where('type', 'request_fee')
+                ->where('status', 'successful')
+                ->where('currency', '!=', 'NGN')
+                ->whereNull('payout_id')
+                ->whereHas('request', fn ($q) => $q
+                    ->where('notary_id', $profile->id)
+                    ->where('status', RequestStatus::Completed->value)
+                    ->where('is_offsite', false))
+                ->lockForUpdate()
+                ->get();
+
+            return $payments
+                ->groupBy('currency')
+                ->map(function (SupportCollection|Collection $group, string $currency) use ($profile, $initiatedBy) {
+                    $gross     = (int) $group->sum('amount');
+                    $share     = (int) $group->sum(fn (Payment $p) => $profile->notaryShare($p->amount));
+                    $completed = $group->pluck('completed_at')->filter();
+
+                    $payout = Payout::create([
+                        'reference'         => 'PO-' . Str::upper(Str::random(10)),
+                        'notary_profile_id' => $profile->id,
+                        'amount'            => $share,
+                        'commission_amount' => $gross - $share,
+                        'currency'          => $currency,
+                        'status'            => 'pending',
+                        'period_start'      => $completed->min()?->toDateString(),
+                        'period_end'        => $completed->max()?->toDateString(),
+                        'initiated_by'      => $initiatedBy,
+                    ]);
+
+                    Payment::whereIn('id', $group->pluck('id'))->update(['payout_id' => $payout->id]);
+
+                    AuditLogger::record('payout.generated_foreign', 'payout', $payout->id, [
+                        'notary_profile_id' => $profile->id,
+                        'currency'          => $currency,
+                        'amount'            => $share,
+                        'commission'        => $gross - $share,
+                        'payments'          => $group->count(),
+                    ], $initiatedBy);
+
+                    return $payout;
+                })
+                ->values();
+        });
+    }
+
+    /**
      * Hand a payout to Paystack.
      *
      * Returns [ok, message]. A rejection is reported rather than thrown: an
@@ -253,6 +326,14 @@ class PayoutService
      * about the ledger. What it does change is the evidence: there is no webhook
      * behind this, so the method, their transfer reference and the admin who
      * recorded it are the record.
+     *
+     * For a FOREIGN payout this is the only way it can ever be settled, and it
+     * carries one extra fact: `settled_amount`, the naira that actually left
+     * the bank against a debt denominated in dollars. It is required rather
+     * than optional, because without it the row says a dollar figure was paid
+     * and the bank statement says a naira one, and nobody can reconcile the
+     * two afterwards. The rate is not asked for — it is the two amounts
+     * divided, exactly, so asking would only invite them to disagree.
      */
     public function settleOffline(Payout $payout, array $details, ?int $actorId = null): array
     {
@@ -264,6 +345,17 @@ class PayoutService
 
         $method = (string) ($details['method'] ?? 'bank_transfer');
 
+        // Major units on the way in, because the form holds what a human typed
+        // into their bank app. Stored as minor units like every other amount.
+        $sentMinor = isset($details['settled_amount'])
+            ? (int) round(((float) $details['settled_amount']) * 100)
+            : null;
+
+        if ($payout->isForeign() && ! $sentMinor) {
+            return [false, 'This payout is in ' . $payout->currency
+                . ', and the notary was paid in naira. Enter the naira amount you actually sent.'];
+        }
+
         $payout->update([
             'status'               => 'paid',
             'processed_at'         => $details['paid_at'] ?? now(),
@@ -272,15 +364,33 @@ class PayoutService
             'settlement_method'    => SettlementMethod::exists($method) ? $method : 'other',
             'settlement_reference' => $details['reference'] ?? null,
             'settlement_note'      => $details['note'] ?? null,
+
+            // Null for an ordinary naira payout, where `amount` already is
+            // what was sent and a second copy of it would only rot.
+            'settled_amount'       => $payout->isForeign() ? $sentMinor : null,
+            'settled_currency'     => $payout->isForeign() ? 'NGN' : null,
         ]);
 
         AuditLogger::record('payout.settled_offline', 'payout', $payout->id, [
             'method'    => $payout->settlement_method,
             'amount'    => $payout->amount,
+            'currency'  => $payout->currency,
+            'sent'      => $payout->settled_amount,
+            'rate'      => $payout->impliedRate(),
             'their_ref' => $payout->settlement_reference,
         ], $actorId);
 
-        return [true, 'Recorded as paid by ' . Str::lower(SettlementMethod::label($payout->settlement_method)) . '.'];
+        $how = 'Recorded as paid by ' . Str::lower(SettlementMethod::label($payout->settlement_method)) . '.';
+
+        // Said back to them, because the rate is the figure they will be asked
+        // about if the notary ever queries the payment.
+        return [true, $payout->isForeign()
+            ? $how . ' ₦' . number_format($payout->settled_amount / 100, 2)
+                . ' sent against ' . ($payout->currency === 'USD' ? '$' : '')
+                . number_format($payout->amount / 100, 2)
+                . ' earned — a rate of ₦' . number_format((float) $payout->impliedRate(), 2)
+                . ' to the ' . ($payout->currency === 'USD' ? 'dollar' : $payout->currency) . '.'
+            : $how];
     }
 
     /** Called by the transfer webhook. */

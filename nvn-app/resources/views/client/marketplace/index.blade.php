@@ -57,16 +57,12 @@
                     Handled in-house by the Naija Virtual Notary desk
                 @endif
             </div>
-            @php
-                // "From" has to mean the cheapest service, not whichever row the
-                // database happened to return first.
-                $cheapest = $notary->services->sortBy(fn ($s) => $s->priceFor($request->currency))->first();
-            @endphp
-            @if ($cheapest)
-                <div class="text-sm" style="color:var(--brand-dark); font-weight:500;">
-                    From {{ $cheapest->displayPrice($request->currency) }}
-                </div>
-            @endif
+            {{-- No price here on purpose. A "from" figure is the cheapest
+                 category this notary offers, which is almost never the one the
+                 client is about to book — so it set an expectation the next
+                 screen then contradicted. The real price for the actual
+                 category is on the notary's own page, which is the screen where
+                 the choice is made. --}}
         </div>
         <a class="btn btn-sm" href="{{ route('client.marketplace.show', [$request, $notary]) }}" style="flex-shrink:0;">
             View &amp; book &rarr;

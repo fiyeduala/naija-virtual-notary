@@ -634,6 +634,32 @@
                         Everything earned on completed jobs has been paid out or is on its way.
                     @endif
                 </p>
+
+                {{-- Work a client abroad paid for in their own currency. Kept
+                     apart from the naira figures above rather than folded in,
+                     because dollars and naira are different units and a single
+                     total mixing them would be a number nobody received. Empty
+                     for almost every notary. --}}
+                @if (! empty($earnings['foreign']))
+                <div class="an-note" style="margin-top:.75rem">
+                    <strong>Paid for in a foreign currency</strong>
+                    @foreach ($earnings['foreign'] as $line)
+                        <div>
+                            {{ $line['earned'] }} earned —
+                            @if ($line['paid'] && $line['sent'])
+                                {{ $line['sent'] }} sent to you
+                                @if ($line['processed']) on {{ $line['processed']->format('j M Y') }} @endif
+                            @else
+                                not yet sent
+                            @endif
+                        </div>
+                    @endforeach
+                    <div style="margin-top:.35rem">
+                        A transfer to a Nigerian account goes in naira, so these are paid to you by hand
+                        rather than automatically. The naira figure is what actually left our account.
+                    </div>
+                </div>
+                @endif
                 @endunless
             </div>
 
