@@ -37,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role'         => \App\Http\Middleware\EnsureUserHasRole::class,
             'verified.otp' => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'candidate.session' => \App\Http\Middleware\EnsureCandidateSessionIsFresh::class,
         ]);
 
         // Which sign-in page an unauthenticated visitor is sent to.
@@ -46,9 +47,20 @@ return Application::configure(basePath: dirname(__DIR__))
         // sent to the client login page, where its credentials do not exist
         // and nothing on the screen explains why — so the guest redirect is
         // chosen by which part of the site was asked for.
-        $middleware->redirectGuestsTo(fn (Request $request) => $request->routeIs('organization.*')
-            ? route('organization.login')
-            : route('login'));
+        // Three doors now: a job applicant signs in with an emailed link and
+        // has no password, so sending them to the client login page would be
+        // a dead end.
+        $middleware->redirectGuestsTo(function (Request $request) {
+            if ($request->routeIs('organization.*')) {
+                return route('organization.login');
+            }
+
+            if ($request->routeIs('candidate.*')) {
+                return route('candidate.login');
+            }
+
+            return route('login');
+        });
 
         // Paystack posts to this route from outside — exclude it from CSRF.
         $middleware->validateCsrfTokens(except: [

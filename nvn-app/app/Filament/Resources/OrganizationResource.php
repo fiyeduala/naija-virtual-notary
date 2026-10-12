@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\OrganizationResource\Pages;
 use App\Filament\Resources\OrganizationResource\RelationManagers;
 use App\Models\NotarizationRequest;
@@ -36,6 +37,8 @@ use Illuminate\Support\HtmlString;
  */
 class OrganizationResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = Organization::class;
     protected static ?string $navigationIcon = 'heroicon-o-building-office-2';
     protected static ?string $navigationGroup = 'Users & notaries';

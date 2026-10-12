@@ -98,9 +98,28 @@ class User extends Authenticatable implements FilamentUser, HasName
         return $this->full_name;
     }
 
-    // Filament admin panel access — only active admins (Phase 8).
+    /**
+     * Filament admin panel access.
+     *
+     * Two kinds of account get in, and they see very different panels:
+     *
+     *   - an active administrator, as before; and
+     *   - an active user carrying a `recruitment_role`, who reaches the
+     *     Recruitment group and nothing else. Every resource, page and widget
+     *     that predates this module carries App\Filament\Concerns\AdminOnly
+     *     and refuses them, so an HR reviewer invited to mark exercises has no
+     *     route to a payment, a payout, a user record or a client's document.
+     *
+     * A recruitment role is additive and nullable, so every account that
+     * existed before this module is unaffected: the column is NULL and the
+     * answer is exactly what it was.
+     */
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->isAdmin() && $this->status === 'active';
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        return $this->isAdmin() || filled($this->recruitment_role);
     }
 }

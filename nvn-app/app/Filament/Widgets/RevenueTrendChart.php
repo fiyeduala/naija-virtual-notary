@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\Payment;
 use App\Support\Analytics;
 use Filament\Widgets\ChartWidget;
@@ -13,6 +14,8 @@ use Illuminate\Support\Carbon;
  */
 class RevenueTrendChart extends ChartWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?string $heading = 'Revenue — last 30 days (₦)';
 
     protected static ?int $sort = 6;

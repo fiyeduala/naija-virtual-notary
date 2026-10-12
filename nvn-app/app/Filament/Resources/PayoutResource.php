@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\PayoutResource\Pages;
 use App\Models\Payout;
 use App\Services\PayoutService;
@@ -17,6 +18,8 @@ use Illuminate\Support\HtmlString;
 
 class PayoutResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = Payout::class;
     protected static ?string $navigationIcon = 'heroicon-o-arrow-up-right';
     protected static ?string $navigationGroup = 'Payments & payouts';

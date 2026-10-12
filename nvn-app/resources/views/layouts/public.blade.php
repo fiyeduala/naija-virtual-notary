@@ -134,6 +134,9 @@
             <a href="{{ route('how-it-works') }}">How It Works</a>
             <a href="{{ route('blog.index') }}">Blog</a>
             <a href="{{ route('partner') }}">Partner With Us</a>
+            @if (\App\Support\RecruitmentPermission::moduleEnabled())
+                <a href="{{ route('careers.index') }}">Careers</a>
+            @endif
             @auth
                 <a href="{{ route('dashboard') }}">Dashboard</a>
             @else
@@ -163,6 +166,9 @@
                 <a href="{{ route('how-it-works') }}">How It Works</a>
                 <a href="{{ route('blog.index') }}">Blog</a>
                 <a href="{{ route('partner') }}">Partner With Us</a>
+                @if (\App\Support\RecruitmentPermission::moduleEnabled())
+                    <a href="{{ route('careers.index') }}">Work With Us</a>
+                @endif
                 {{-- /partner-with-us is for notaries. A government body, an
                      embassy or a firm wanting to send us work needs its own
                      door, and this was the only one marked "partner". --}}

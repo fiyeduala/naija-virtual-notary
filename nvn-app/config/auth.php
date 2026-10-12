@@ -52,6 +52,19 @@ return [
             'driver' => 'session',
             'provider' => 'organizations',
         ],
+
+        // Job applicants, on a boundary of their own.
+        //
+        // Deliberately not the 'web' guard: a candidate session must not be
+        // able to reach a client dashboard or a staff screen even by accident,
+        // and every one of those routes is behind auth on 'web'. A candidate
+        // has no password at all — they sign in with a one-use emailed link
+        // (App\Services\Recruitment\CandidateAccessService) — and there is no
+        // password broker for them for the same reason.
+        'candidate' => [
+            'driver' => 'session',
+            'provider' => 'candidates',
+        ],
     ],
 
     /*
@@ -85,6 +98,11 @@ return [
         'organizations' => [
             'driver' => 'eloquent',
             'model' => App\Models\Organization::class,
+        ],
+
+        'candidates' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Candidate::class,
         ],
 
         // 'users' => [

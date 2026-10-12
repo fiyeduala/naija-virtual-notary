@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Enums\RequestStatus;
 use App\Filament\Resources\NotarizationRequestResource\Pages;
 use App\Models\NotarizationRequest;
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\Collection;
 
 class NotarizationRequestResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = NotarizationRequest::class;
     protected static ?string $navigationIcon = 'heroicon-o-document-check';
     protected static ?string $navigationGroup = 'Requests & sessions';

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\PaymentResource\Pages;
 use App\Models\Payment;
 use App\Services\OfflinePaymentService;
@@ -14,6 +15,8 @@ use Filament\Tables\Table;
 
 class PaymentResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = Payment::class;
     protected static ?string $navigationIcon = 'heroicon-o-banknotes';
     protected static ?string $navigationGroup = 'Payments & payouts';

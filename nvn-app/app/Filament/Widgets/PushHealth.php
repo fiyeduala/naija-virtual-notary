@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\PushSubscription;
 use App\Models\User;
 use Filament\Widgets\Widget;
@@ -24,6 +25,8 @@ use Throwable;
  */
 class PushHealth extends Widget
 {
+    use AdminOnlyWidget;
+
     protected static string $view = 'filament.widgets.push-health';
 
     protected static ?int $sort = 0;

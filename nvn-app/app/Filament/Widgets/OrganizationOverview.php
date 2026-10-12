@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\RequestStatus;
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use App\Models\Organization;
 use App\Models\OrganizationPayout;
@@ -25,6 +26,8 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
  */
 class OrganizationOverview extends BaseWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?int $sort = 8;
 
     public static function canView(): bool

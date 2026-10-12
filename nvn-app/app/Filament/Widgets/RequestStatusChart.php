@@ -3,12 +3,15 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\RequestStatus;
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use Filament\Widgets\ChartWidget;
 
 /** Where every request in the system currently sits. */
 class RequestStatusChart extends ChartWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?string $heading = 'Requests by status';
 
     protected static ?int $sort = 4;

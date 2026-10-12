@@ -40,3 +40,37 @@ Schedule::command('nvn:asset-reminders')
     ->dailyAt('10:00')
     ->timezone('Africa/Lagos')
     ->withoutOverlapping(30);
+
+/*
+| Recruitment.
+|
+| All three are no-ops while NVN_RECRUITMENT_ENABLED is false, so they are safe
+| to schedule long before anybody is meant to see a vacancy. Each checks the
+| switch itself rather than being wrapped in a condition here, because a
+| schedule that silently disappears is harder to debug than a command that says
+| why it did nothing.
+*/
+
+// The outbox drain. Every minute, because a candidate's single-use sign-in
+// link is useless if it arrives five minutes after they asked for it, and
+// because the per-minute `queue:work` above is the pattern the host already
+// tolerates. Bounded by --limit, and overlap-protected both here and by a
+// row-level lock inside dispatchDue().
+Schedule::command('nvn:recruitment-dispatch')
+    ->everyMinute()
+    ->withoutOverlapping(10);
+
+// Overdue assessments and spent sign-in tokens. Early, before the office
+// opens, so a reviewer's first look at the queue is already accurate.
+Schedule::command('nvn:recruitment-sweep')
+    ->dailyAt('07:30')
+    ->timezone('Africa/Lagos')
+    ->withoutOverlapping(30);
+
+// The retention purge. It refuses to delete anything until an approved
+// retention period is set, and says so instead, so this entry is inert rather
+// than dangerous on a fresh install.
+Schedule::command('nvn:recruitment-retention')
+    ->dailyAt('02:00')
+    ->timezone('Africa/Lagos')
+    ->withoutOverlapping(60);

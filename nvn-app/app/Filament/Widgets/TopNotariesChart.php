@@ -3,12 +3,15 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\RequestStatus;
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use Filament\Widgets\ChartWidget;
 
 /** Who is actually carrying the volume. */
 class TopNotariesChart extends ChartWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?string $heading = 'Completed notarizations by notary';
 
     protected static ?int $sort = 7;

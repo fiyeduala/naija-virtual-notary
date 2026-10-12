@@ -56,3 +56,4 @@ require __DIR__ . '/payments.php';  // Phase 5 — request payment + notary acce
 require __DIR__ . '/session.php';   // Phase 6 — verification call + notarization
 require __DIR__ . '/messages.php';  // Phase 7 — messaging + admin oversight
 require __DIR__ . '/organizations.php'; // Partner bodies — landing, application, portal
+require __DIR__ . '/careers.php';   // Recruitment — careers pages, applications, candidate area

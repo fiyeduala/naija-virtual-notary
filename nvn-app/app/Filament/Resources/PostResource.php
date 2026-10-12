@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\PostResource\Pages;
 use App\Models\Post;
 use App\Models\PostComment;
@@ -18,6 +19,8 @@ use Illuminate\Support\Str;
 
 class PostResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = Post::class;
     protected static ?string $navigationIcon = 'heroicon-o-newspaper';
     protected static ?string $navigationGroup = 'Content & settings';

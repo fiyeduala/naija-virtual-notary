@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\RequestStatus;
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use App\Models\NotaryProfile;
 use App\Models\Payment;
@@ -13,6 +14,8 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class PlatformOverview extends BaseWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?int $sort = 1;
 
     protected function getStats(): array

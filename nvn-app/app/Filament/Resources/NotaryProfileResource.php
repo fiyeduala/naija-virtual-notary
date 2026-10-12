@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\NotaryProfileResource\Pages;
 use App\Models\NotaryProfile;
 use App\Notifications\NotaryApplicationReviewed;
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class NotaryProfileResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = NotaryProfile::class;
     protected static ?string $navigationIcon = 'heroicon-o-identification';
     protected static ?string $navigationGroup = 'Users & notaries';

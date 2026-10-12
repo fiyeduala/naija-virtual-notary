@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use App\Support\Analytics;
 use Filament\Widgets\ChartWidget;
@@ -9,6 +10,8 @@ use Filament\Widgets\ChartWidget;
 /** Requests submitted per day over the trailing month. */
 class RequestsTrendChart extends ChartWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?string $heading = 'Requests received — last 30 days';
 
     protected static ?int $sort = 3;

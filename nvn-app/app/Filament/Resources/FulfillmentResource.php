@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Enums\RequestStatus;
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\FulfillmentResource\Pages;
 use App\Models\NotarizationRequest;
 use App\Support\AuditLogger;
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class FulfillmentResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = NotarizationRequest::class;
     protected static ?string $slug = 'fulfillment';
     protected static ?string $navigationIcon = 'heroicon-o-truck';

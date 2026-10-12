@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\QuoteRequestResource\Pages;
 use App\Models\QuoteRequest;
 use App\Support\AuditLogger;
@@ -12,6 +13,8 @@ use Filament\Tables\Table;
 
 class QuoteRequestResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = QuoteRequest::class;
     protected static ?string $navigationIcon = 'heroicon-o-envelope';
     protected static ?string $navigationGroup = 'Content & settings';

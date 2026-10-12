@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\Post;
 use App\Models\PostComment;
 use App\Models\PostView;
@@ -20,6 +21,8 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
  */
 class BlogOverview extends BaseWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?int $sort = 9;
 
     public static function canView(): bool

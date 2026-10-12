@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\PostCommentResource\Pages;
 use App\Models\Post;
 use App\Models\PostComment;
@@ -27,6 +28,8 @@ use Filament\Tables\Table;
  */
 class PostCommentResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = PostComment::class;
     protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-left-right';
     protected static ?string $navigationGroup = 'Content & settings';

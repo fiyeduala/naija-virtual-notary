@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\EmailCampaignResource\Pages;
 use App\Filament\Resources\EmailCampaignResource\RelationManagers;
 use App\Mail\AdminBroadcastMail;
@@ -30,6 +31,8 @@ use Illuminate\Support\Facades\Mail;
  */
 class EmailCampaignResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = EmailCampaign::class;
     protected static ?string $navigationIcon = 'heroicon-o-paper-airplane';
     protected static ?string $navigationGroup = 'Content & settings';

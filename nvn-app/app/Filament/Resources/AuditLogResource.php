@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\AuditLogResource\Pages;
 use App\Models\AuditLog;
 use Filament\Resources\Resource;
@@ -10,6 +11,8 @@ use Filament\Tables\Table;
 
 class AuditLogResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = AuditLog::class;
     protected static ?string $navigationIcon = 'heroicon-o-shield-check';
     protected static ?string $navigationGroup = 'Disputes & audit';

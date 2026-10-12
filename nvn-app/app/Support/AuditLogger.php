@@ -26,7 +26,24 @@ class AuditLogger
             $previous = AuditLog::orderByDesc('id')->lockForUpdate()->first();
             $previousHash = $previous?->content_hash;
 
-            $actorUserId ??= auth()->id();
+            // Named guard, deliberately, and not auth()->id().
+            //
+            // Laravel's Authenticate middleware calls shouldUse() with
+            // whichever guard let the request through, so inside a candidate
+            // or organization-portal request the DEFAULT guard is no longer
+            // 'web' and auth()->id() answers with a candidate or organization
+            // id. This column is a foreign key to users. Writing a candidate's
+            // id into it either fails the constraint outright or — where a user
+            // with that id happens to exist — quietly records an action as
+            // having been taken by an unrelated member of staff, in the one
+            // table whose whole purpose is to be believed afterwards.
+            //
+            // 'web' is the only guard backed by the users table, so it is the
+            // only guard that can answer this question. Every other guard
+            // leaves the actor null, which is correct: the row's own action
+            // name says who it was, and a null here reads as "not a member of
+            // staff" rather than as the wrong member of staff.
+            $actorUserId ??= auth('web')->id();
             $createdAt = now();
 
             $contentHash = hash('sha256', static::payload(

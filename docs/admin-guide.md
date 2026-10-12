@@ -152,7 +152,35 @@ Enquiries from the public site that have not yet become bookings.
 
 ---
 
-## 8. Your dashboard
+## 8. Recruitment
+
+A separate group, because hiring is a separate job with separate people doing
+it. It appears only when the recruitment feature switch is on, and it carries
+the four remote vacancies, the applications, the assessment exercises, the
+candidate emails, the privacy notice and the retention policy.
+
+Three things to know before you open it:
+
+- **A recruitment role is not an administrator.** You give somebody a
+  recruitment role on their user record, and it grants exactly the hiring
+  abilities and nothing else — no payments, no payouts, no user records, no
+  client's documents. The four roles are reviewer, coordinator, HR admin and
+  lead, and they widen in that order.
+- **Nothing is live until you make it live.** The four vacancies ship as
+  drafts with their employment type, hours, closing date and pay disclosure
+  deliberately blank, and each one refuses to publish until you fill them in.
+- **Readiness is the list that decides.** `Recruitment → Readiness` tells you
+  what is configured, what is not, and what would actually go wrong. Two
+  items on it need a decision rather than a setting: the privacy notice has
+  to be read by somebody qualified, and the retention period is yours to
+  choose — the software will not pick either for you.
+
+The full handover, including the setup, the launch checklist and how to switch
+the whole module off, is in **`nvn-app/docs/recruitment.md`**.
+
+---
+
+## 9. Your dashboard
 
 The panel's front page carries: an overview of the platform, the notary desk queue, requests over time, revenue over time, the mix of request statuses, your busiest days, and your most active notaries.
 
@@ -160,7 +188,7 @@ The **notary desk queue** is the one to check first each morning. It shows what 
 
 ---
 
-## 9. A working routine
+## 10. A working routine
 
 **Each morning**
 
@@ -182,7 +210,7 @@ The **notary desk queue** is the one to check first each morning. It shows what 
 
 ---
 
-## 10. When something goes wrong
+## 11. When something goes wrong
 
 **A client paid but nothing happened.** Check Payments for the transaction. If Paystack shows it and the platform does not, the webhook did not arrive — Paystack's own dashboard has a delivery log, and a non-200 response there is the answer. You can record the payment manually in the meantime; the client is not held up by it.
 
@@ -196,7 +224,7 @@ The **notary desk queue** is the one to check first each morning. It shows what 
 
 ---
 
-## 11. Things worth knowing before someone asks
+## 12. Things worth knowing before someone asks
 
 - **A request only reaches a notary after payment.** There is no path around this, and it is the reason no partner is ever asked to work on trust.
 - **The response window is a prompt, not a transfer.** Nothing moves on its own when it elapses.

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Concerns\AdminOnly;
 use App\Filament\Resources\OrganizationPayoutResource\Pages;
 use App\Models\OrganizationPayout;
 use App\Services\OrganizationPayoutService;
@@ -31,6 +32,8 @@ use Illuminate\Support\HtmlString;
  */
 class OrganizationPayoutResource extends Resource
 {
+    use AdminOnly;
+
     protected static ?string $model = OrganizationPayout::class;
     protected static ?string $navigationIcon = 'heroicon-o-building-office-2';
     protected static ?string $navigationGroup = 'Payments & payouts';

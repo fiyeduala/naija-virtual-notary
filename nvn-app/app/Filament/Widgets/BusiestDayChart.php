@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use App\Support\Analytics;
 use Filament\Widgets\ChartWidget;
@@ -12,6 +13,8 @@ use Filament\Widgets\ChartWidget;
  */
 class BusiestDayChart extends ChartWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?string $heading = 'Busiest day of the week';
 
     protected static ?int $sort = 5;

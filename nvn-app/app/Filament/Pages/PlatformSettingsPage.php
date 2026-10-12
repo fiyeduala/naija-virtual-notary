@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\Specialty;
+use App\Filament\Concerns\AdminOnly;
 use App\Models\NotaryProfile;
 use App\Models\NotaryService;
 use App\Models\PlatformSetting;
@@ -15,6 +16,8 @@ use Filament\Pages\Page;
 
 class PlatformSettingsPage extends Page implements HasForms
 {
+    use AdminOnly;
+
     use InteractsWithForms;
 
     protected static ?string $navigationIcon  = 'heroicon-o-cog-6-tooth';

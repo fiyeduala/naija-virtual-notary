@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\RequestStatus;
+use App\Filament\Concerns\AdminOnlyWidget;
 use App\Models\NotarizationRequest;
 use App\Services\RequestFulfillmentService;
 use Filament\Notifications\Notification;
@@ -29,6 +30,8 @@ use Illuminate\Support\Facades\Auth;
  */
 class NotaryDeskQueue extends BaseWidget
 {
+    use AdminOnlyWidget;
+
     protected static ?string $heading = 'Notarization desk';
 
     protected static ?int $sort = 2;
