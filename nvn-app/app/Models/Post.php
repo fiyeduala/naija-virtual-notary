@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -56,6 +57,42 @@ class Post extends Model
         return $this->belongsTo(User::class, 'author_id');
     }
 
+    public function views(): HasMany
+    {
+        return $this->hasMany(PostView::class);
+    }
+
+    /** Every comment, in every state — the moderation side. */
+    public function comments(): HasMany
+    {
+        return $this->hasMany(PostComment::class);
+    }
+
+    /**
+     * What a reader sees: approved top-level comments, oldest first.
+     *
+     * Replies come through PostComment::replies(), which applies the same
+     * approval filter, so an approved reply under an unapproved parent cannot
+     * surface by itself.
+     */
+    public function publicComments(): HasMany
+    {
+        return $this->comments()->approved()->threadRoots()->oldest();
+    }
+
+    /**
+     * How many of the people who opened it actually read it.
+     *
+     * The number the article is judged on. Views alone cannot tell a careful
+     * read from somebody who left immediately, and for a marketing piece that
+     * difference is the entire question.
+     */
+    public function readThroughRate(): int
+    {
+        $views = $this->views()->count();
+
+        return $views === 0 ? 0 : (int) round($this->views()->read()->count() / $views * 100);
+    }
     /** Live, and not post-dated. */
     public function scopePublished(Builder $query): Builder
     {

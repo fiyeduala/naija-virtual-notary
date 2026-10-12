@@ -71,6 +71,69 @@
     .more-card:hover { box-shadow: var(--shadow); }
     .more-card h4 { font-size: 16px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; }
     .more-card span { font-size: 12.5px; color: var(--muted); }
+
+    /* ---- Comments ---------------------------------------------------- */
+    .comments-block { border-top: 1px solid var(--line); }
+    .comments-head { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+    .comment {
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 16px 18px; margin-bottom: 14px; background: var(--surface);
+    }
+    .comment-reply { margin: 14px 0 0 24px; background: var(--bg); }
+    .comment-meta {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+        font-size: 13.5px; color: var(--muted); margin-bottom: 8px;
+    }
+    .comment-meta strong { color: var(--ink); font-size: 14.5px; font-weight: 600; }
+    .comment-tag {
+        font-size: 11.5px; font-weight: 600; color: var(--brand-dark);
+        background: var(--brand-light); border-radius: 20px; padding: 2px 9px;
+    }
+    .comment-body { font-size: 15.5px; line-height: 1.65; color: #364150; }
+    .comment-reply-btn {
+        margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--brand);
+        background: none; border: 0; padding: 0; cursor: pointer;
+    }
+    .comment-reply-btn:hover { color: var(--brand-dark); }
+    .comment-empty { color: var(--muted); font-size: 15px; margin-bottom: 24px; }
+    .comment-note {
+        background: var(--brand-light); border-radius: var(--radius);
+        padding: 14px 18px; font-size: 14.5px; color: var(--brand-dark);
+        margin-bottom: 20px;
+    }
+    .comment-error { color: #b3261e; font-size: 13.5px; margin-top: 6px; }
+    .comment-form { margin-top: 32px; }
+    .comment-form-head { font-size: 17px; font-weight: 700; margin-bottom: 14px; }
+    .comment-form label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .comment-form input[type="text"],
+    .comment-form input[type="email"],
+    .comment-form textarea {
+        width: 100%; border: 1px solid var(--line); border-radius: 10px;
+        padding: 11px 13px; font: inherit; font-size: 15px; background: var(--surface);
+    }
+    .comment-form textarea { min-height: 130px; resize: vertical; }
+    .comment-body-field { display: block; margin-bottom: 16px; }
+    .comment-form small { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400; margin-top: 5px; }
+    .comment-smallprint { font-size: 13px; color: var(--muted); margin-top: 12px; }
+    .comment-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 640px) { .comment-fields { grid-template-columns: 1fr; } }
+    .comment-as { font-size: 14.5px; color: var(--muted); margin-bottom: 16px; }
+    .comment-replying {
+        font-size: 14px; background: var(--bg);
+        border: 1px solid var(--line); border-radius: 10px;
+        padding: 10px 13px; margin-bottom: 16px;
+    }
+    .comment-replying button {
+        background: none; border: 0; color: var(--brand); font-weight: 600;
+        cursor: pointer; padding: 0; margin-left: 8px; font-size: 13px;
+    }
+
+    /* The honeypot. Off-screen rather than display:none, because some bots
+       skip fields that are not rendered at all. */
+    .comment-hp {
+        position: absolute; left: -9999px; width: 1px; height: 1px;
+        overflow: hidden;
+    }
 </style>
 @endpush
 
@@ -138,5 +201,115 @@
         @endif
     </div>
 </section>
+
+@include('public.blog._comments', ['post' => $post, 'comments' => $comments])
+
+{{--
+    The read beacon.
+
+    Opening a page is not reading it. This marks the visit as a genuine read
+    only once the visitor has got 60% of the way down AND spent at least a
+    quarter of the article's own estimated reading time on it, so a long
+    article demands more of both than a short one, with a 15-second floor.
+
+    It posts nothing but the slug and a duration. The row it stamps is derived
+    server-side from the fingerprint of the request, so there is no id here to
+    tamper with and the worst a forged call can do is mark the sender's own
+    visit read early.
+--}}
+<script>
+(function () {
+    var url     = @json(route('blog.read', $post));
+    var token   = @json(csrf_token());
+    var minimum = Math.max(15, Math.round({{ $post->readingMinutes() }} * 60 * 0.25));
+    var started = Date.now();
+    var deepest = 0;
+    var sent    = false;
+
+    function depth() {
+        var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+
+        // A screen with nothing to scroll has no depth to measure, so the
+        // time floor alone decides whether it was read.
+        if (scrollable <= 0) {
+            return 100;
+        }
+
+        return Math.round((window.scrollY / scrollable) * 100);
+    }
+
+    function seconds() {
+        return Math.round((Date.now() - started) / 1000);
+    }
+
+    function send() {
+        if (sent || deepest < 60 || seconds() < minimum) {
+            return;
+        }
+
+        sent = true;
+
+        var body = new FormData();
+        body.append('_token', token);
+        body.append('seconds', seconds());
+
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, body);
+        } else {
+            fetch(url, { method: 'POST', body: body, keepalive: true });
+        }
+    }
+
+    window.addEventListener('scroll', function () {
+        var now = depth();
+
+        if (now > deepest) {
+            deepest = now;
+        }
+    }, { passive: true });
+
+    setTimeout(send, minimum * 1000 + 500);
+
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') {
+            send();
+        }
+    });
+
+    // pagehide rather than unload, which some browsers no longer fire at all.
+    window.addEventListener('pagehide', send);
+})();
+</script>
+
+<script>
+(function () {
+    var parent   = document.getElementById('comment-parent');
+    var banner   = document.getElementById('comment-replying');
+    var heading  = document.getElementById('comment-form-head');
+    var cancel   = document.getElementById('comment-cancel-reply');
+    var target   = document.getElementById('comment-replying-name');
+
+    if (!parent) {
+        return;
+    }
+
+    document.querySelectorAll('[data-reply-to]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            parent.value       = button.getAttribute('data-reply-to');
+            target.textContent = button.getAttribute('data-reply-name');
+            banner.hidden      = false;
+            heading.textContent  = 'Write a reply';
+            document.getElementById('comment-body').focus({ preventScroll: true });
+            banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    });
+
+    cancel.addEventListener('click', function () {
+        parent.value         = '';
+        banner.hidden        = true;
+        heading.textContent  = 'Leave a comment';
+    });
+})();
+</script>
 
 @endsection

@@ -26,6 +26,21 @@ Route::get('/how-it-works', fn () => view('public.how-it-works'))->name('how-it-
 Route::get('/blog', [\App\Http\Controllers\BlogController::class, 'index'])->name('blog.index');
 Route::get('/blog/{post}', [\App\Http\Controllers\BlogController::class, 'show'])->name('blog.show');
 
+// The read beacon, and comments. Both take the slug and resolve the article
+// themselves, because both are public POSTs and neither should accept a
+// database id from the body.
+//
+// The beacon is throttled generously: it fires at most once per article per
+// reader, but a reader with several tabs open is normal and should not be
+// refused. The comment throttle matches /organizations/apply, the other
+// unauthenticated public form on the site.
+Route::post('/blog/{post}/read', [\App\Http\Controllers\BlogController::class, 'read'])
+    ->middleware('throttle:30,1')
+    ->name('blog.read');
+
+Route::post('/blog/{post}/comment', [\App\Http\Controllers\PostCommentController::class, 'store'])
+    ->middleware('throttle:5,60')
+    ->name('blog.comment');
 // Email preferences — the unsubscribe link at the foot of an announcement.
 // Signed rather than authenticated: making someone log in to stop receiving
 // email is how you get reported as spam instead.

@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\PostResource\Pages;
 use App\Models\Post;
+use App\Models\PostComment;
 use App\Models\User;
 use App\Support\AuditLogger;
 use Filament\Forms;
@@ -23,11 +24,39 @@ class PostResource extends Resource
     protected static ?string $navigationLabel = 'Blog';
     protected static ?string $recordTitleAttribute = 'title';
 
+    public static function getNavigationBadge(): ?string
+    {
+        $count = PostComment::pending()->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Comments waiting to be approved';
+    }
+
     public static function getEloquentQuery(): Builder
     {
         // Drafts and soft-deleted articles both belong in the admin's list; the
         // public scope is what decides who sees what.
-        return parent::getEloquentQuery()->withoutGlobalScopes();
+        //
+        // The three counts are selected here rather than read off each row in
+        // the table, which would be three queries per article on a page of
+        // twenty-five.
+        return parent::getEloquentQuery()
+            ->withoutGlobalScopes()
+            ->withCount([
+                'views',
+                'views as reads_count' => fn (Builder $query) => $query->whereNotNull('read_at'),
+                'comments',
+                'comments as pending_comments_count' => fn (Builder $query) => $query->where('status', 'pending'),
+            ]);
     }
 
     public static function form(Form $form): Form
@@ -157,8 +186,39 @@ class PostResource extends Resource
                     ->description(fn (Post $p) => $p->published_at?->isFuture() ? 'Scheduled' : null)
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('views_count')
+                    ->label('Views')
+                    ->numeric()
+                    ->sortable()
+                    ->alignEnd()
+                    // Not "0". A draft has no views because nobody could have
+                    // opened it, which is a different fact from an article
+                    // nobody opened, and a dash says so.
+                    ->formatStateUsing(fn ($state, Post $p) => $p->isPublished() ? number_format($state) : '—'),
+
+                Tables\Columns\TextColumn::make('reads_count')
+                    ->label('Reads')
+                    ->numeric()
+                    ->sortable()
+                    ->alignEnd()
+                    ->description(fn (Post $p) => $p->views_count > 0
+                        ? round($p->reads_count / $p->views_count * 100) . '%'
+                        : null)
+                    ->formatStateUsing(fn ($state, Post $p) => $p->isPublished() ? number_format($state) : '—'),
+
+                Tables\Columns\TextColumn::make('comments_count')
+                    ->label('Comments')
+                    ->numeric()
+                    ->sortable()
+                    ->alignEnd()
+                    ->badge()
+                    ->color(fn (Post $p) => $p->pending_comments_count > 0 ? 'warning' : 'gray')
+                    ->tooltip(fn (Post $p) => $p->pending_comments_count > 0
+                        ? $p->pending_comments_count . ' waiting on a decision'
+                        : null),
+
                 Tables\Columns\TextColumn::make('author.full_name')
-                    ->label('Author')->placeholder('—')->toggleable(),
+                    ->label('Author')->placeholder('—')->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('legacy_source')
                     ->label('Source')
@@ -190,6 +250,11 @@ class PostResource extends Resource
                     ->openUrlInNewTab()
                     ->visible(fn (Post $p) => $p->isPublished()),
 
+                Tables\Actions\Action::make('analytics')
+                    ->label('Analytics')
+                    ->icon('heroicon-o-chart-bar')
+                    ->url(fn (Post $p) => Pages\PostAnalytics::getUrl(['record' => $p])),
+
                 Tables\Actions\EditAction::make(),
 
                 Tables\Actions\Action::make('publish')
@@ -220,6 +285,7 @@ class PostResource extends Resource
             'index'  => Pages\ListPosts::route('/'),
             'create' => Pages\CreatePost::route('/create'),
             'edit'   => Pages\EditPost::route('/{record}/edit'),
+            'analytics' => Pages\PostAnalytics::route('/{record}/analytics'),
         ];
     }
 }
