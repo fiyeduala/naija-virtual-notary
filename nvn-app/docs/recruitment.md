@@ -199,6 +199,23 @@ php artisan config:clear
 php artisan view:cache
 ```
 
+> **If you already ran `migrate --force` on the server before this fix.** The
+> first version of migration `…_000003` named one index implicitly, and MySQL
+> rejected the generated name as too long (error 1059). The migration would
+> have stopped part-way: `assessment_assignments` and `assessment_responses`
+> exist, the migration is **not** recorded as run, and the remaining seven
+> tables are absent. MySQL does not roll back DDL, so re-running it now fails
+> on "table already exists". To recover, drop those two tables and run
+> `migrate --force` again — nothing can be in them yet, because nothing was
+> reachable:
+>
+> ```sql
+> DROP TABLE IF EXISTS assessment_responses;
+> DROP TABLE IF EXISTS assessment_assignments;
+> ```
+>
+> If `php artisan migrate:status` shows all four as run, none of this applies.
+
 `RecruitmentSeeder` writes the four **draft** vacancies and the four assessment
 exercises. It is idempotent — every row goes in with `firstOrCreate` on a
 natural key and it never updates or deletes anything — so running it twice is
@@ -215,6 +232,11 @@ Status columns are `string(20)` with class constants rather than MySQL `enum`s,
 because a value outside an `enum` truncates with warning 1265 on MySQL and saves
 cleanly on SQLite — a difference that hides bugs. Token and reference hashes are
 `char(64)`, because MySQL 8 refuses a unique index on `TEXT` (error 1170).
+One index is named by hand — `assessment_responses_task_revision_index` —
+because the name Laravel generates from its three columns is 69 characters
+and MySQL caps an identifier at 64 (error 1059), which SQLite accepts without
+a word. All three of these only ever show up on the engine the live server
+actually runs, which is why the test suite runs against both.
 
 ---
 
@@ -490,10 +512,21 @@ Six new feature files, 62 tests, run alongside everything that was already
 there. The full suite with OTP verification forced on:
 
 ```
-NVN_REQUIRE_OTP=true php artisan test
-Tests:    244 passed (935 assertions)
-Duration: 199.34s
+NVN_REQUIRE_OTP=true vendor/bin/phpunit -c phpunit.xml
+OK (244 tests, 935 assertions)
+Time: 03:55
 ```
+
+And against MariaDB, which is what the live server runs — a separate config
+pointed at a real MySQL connection, because three of the four engine traps in
+section 5 are invisible on SQLite:
+
+```
+vendor/bin/phpunit -c phpunit.mysql.xml --filter=Recruitment
+```
+
+Both of those run on every push; the GitHub workflow is a two-job matrix for
+exactly this reason.
 
 | File | Tests | What it pins down |
 | --- | :-: | --- |

@@ -99,7 +99,14 @@ return new class extends Migration
 
             $table->timestamps();
 
-            $table->index(['assessment_assignment_id', 'task_key', 'revision']);
+            // Named, because the name Laravel would generate for these three
+            // columns is 69 characters and MySQL caps an identifier at 64.
+            // SQLite accepts it without complaint, so this only ever shows up
+            // on the engine the live server actually runs.
+            $table->index(
+                ['assessment_assignment_id', 'task_key', 'revision'],
+                'assessment_responses_task_revision_index',
+            );
             $table->index(['assessment_assignment_id', 'is_final']);
         });
 

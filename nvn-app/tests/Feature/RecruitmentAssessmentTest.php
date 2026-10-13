@@ -12,6 +12,8 @@ use App\Services\Recruitment\CandidateAccessService;
 use App\Support\ExternalLink;
 use App\Support\RecruitmentTemplates;
 use App\Support\Settings;
+use App\Support\WorkingCalendar;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\RecruitmentFixtures;
@@ -226,21 +228,24 @@ class RecruitmentAssessmentTest extends TestCase
         );
     }
 
-    public function test_a_deadline_inside_the_reminder_window_gets_no_reminder(): void
+    public function test_a_reminder_whose_moment_has_already_passed_is_not_sent(): void
     {
-        $reviewer = $this->makeRecruitmentAdmin();
-
-        // One working day to do it, so the reminder would land at or after the
-        // deadline. A nudge that arrives after the thing it nudges about is
-        // worse than silence.
-        $assignment = $this->assessments->invite(
-            $this->stages->beginReview(
-                $this->makeApplication($this->makePublishedVacancy(['slug' => 'tight'])),
-                $reviewer,
-            ),
+        $reviewer    = $this->makeRecruitmentAdmin();
+        $application = $this->stages->beginReview(
+            $this->makeApplication($this->makePublishedVacancy(['slug' => 'tight'])),
             $reviewer,
-            ['due_working_days' => 1],
         );
+
+        // The clock is held still, and it has to be. One working day to do it
+        // puts the deadline at tomorrow 17:00 and the reminder at this morning
+        // 09:00 — a moment that has already gone. Left to the real clock this
+        // test asserts one thing during office hours and the opposite at two
+        // in the morning, which is how a correct rule ends up looking flaky.
+        $this->travelTo(WorkingCalendar::addWorkingDays(CarbonImmutable::now(), 1, '14:00'));
+
+        $assignment = $this->assessments->invite($application, $reviewer, ['due_working_days' => 1]);
+
+        $this->travelBack();
 
         $this->assertSame(
             0,
