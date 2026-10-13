@@ -523,6 +523,8 @@ section 5 are invisible on SQLite:
 
 ```
 vendor/bin/phpunit -c phpunit.mysql.xml --filter=Recruitment
+OK (62 tests, 382 assertions)
+Time: 04:25
 ```
 
 Both of those run on every push; the GitHub workflow is a two-job matrix for
