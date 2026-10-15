@@ -179,14 +179,17 @@ class ClientSignaturePlacementTest extends TestCase
     {
         $d = $this->desk();
 
-        $stranger = User::create([
+        $stranger = new User([
             'full_name'         => 'Stranger',
             'email'             => 'stranger-' . uniqid() . '@example.test',
             'password'          => 'password',
-            'role'              => 'client',
             'status'            => 'active',
             'email_verified_at' => now(),
         ]);
+
+        // Not mass-assignable — see User::$fillable.
+        $stranger->role = 'client';
+        $stranger->save();
 
         $this->actingAs($stranger)
             ->get(route('session.client-signature', ['request' => $d['request']->id, 'signature' => $d['signature']->id]))

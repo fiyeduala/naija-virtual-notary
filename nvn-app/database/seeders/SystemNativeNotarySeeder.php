@@ -27,11 +27,24 @@ class SystemNativeNotarySeeder extends Seeder
             [
                 'full_name'         => 'Naija Virtual Notary',
                 'password'          => Hash::make(env('NVN_ADMIN_PASSWORD', 'change-me-now')),
-                'role'              => UserRole::Admin,
                 'status'            => 'active',
                 'email_verified_at' => now(),
             ]
         );
+
+        // Set afterwards, because role is not mass-assignable and
+        // firstOrCreate() fills: the column defaults to 'client', so leaving
+        // this out would seed the platform's own notary as an ordinary client
+        // and nothing would complain. See User::$fillable.
+        //
+        // Only on creation, which is what firstOrCreate() meant before the
+        // column stopped being fillable. Re-seeding must not reach into an
+        // account somebody has since changed on purpose — including one
+        // demoted deliberately.
+        if ($admin->wasRecentlyCreated) {
+            $admin->role = UserRole::Admin;
+            $admin->save();
+        }
 
         $profile = NotaryProfile::firstOrCreate(
             ['user_id' => $admin->id],

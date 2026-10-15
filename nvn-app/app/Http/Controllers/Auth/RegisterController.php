@@ -26,14 +26,19 @@ class RegisterController extends Controller
 
     public function store(RegisterRequest $request): RedirectResponse
     {
-        $user = User::create([
+        $user = new User([
             'full_name' => $request->validated('full_name'),
             'email'     => $request->validated('email'),
             'phone'     => $request->validated('phone'),
             'password'  => $request->validated('password'),
-            'role'      => UserRole::Client, // public signups are always clients
             'status'    => 'active',
         ]);
+
+        // Assigned rather than filled: role is not mass-assignable, so that
+        // no amount of editing this array can ever let the form choose it.
+        // See User::$fillable. Public signups are always clients.
+        $user->role = UserRole::Client;
+        $user->save();
 
         // If a partner body sent them, record it now and only now. The cookie
         // can only be read out of the browser that is actually here, and by

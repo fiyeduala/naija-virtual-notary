@@ -158,18 +158,25 @@ trait RecruitmentFixtures
     {
         $seq = ++$this->recruitSeq;
 
-        $user = User::create(array_merge([
+        $attributes = array_merge([
             'full_name'         => 'Recruiter ' . $seq,
             'email'             => 'recruiter' . $seq . '@example.test',
             'password'          => 'password',
             'role'              => 'client',
             'status'            => 'active',
             'email_verified_at' => now(),
-        ], $overrides));
+        ], $overrides);
 
-        // Set directly, exactly as the panel does: recruitment_role is not
-        // mass-assignable, and a fixture that widened $fillable to make itself
-        // convenient would be testing a different application.
+        $accountRole = $attributes['role'];
+        unset($attributes['role']);
+
+        $user = new User($attributes);
+
+        // Set directly, exactly as the panel does: neither role nor
+        // recruitment_role is mass-assignable, and a fixture that widened
+        // $fillable to make itself convenient would be testing a different
+        // application.
+        $user->role             = $accountRole;
         $user->recruitment_role = $role;
         $user->save();
 
@@ -181,14 +188,24 @@ trait RecruitmentFixtures
     {
         $seq = ++$this->recruitSeq;
 
-        return User::create(array_merge([
+        $attributes = array_merge([
             'full_name'         => 'Admin ' . $seq,
             'email'             => 'recruitadmin' . $seq . '@example.test',
             'password'          => 'password',
             'role'              => 'admin',
             'status'            => 'active',
             'email_verified_at' => now(),
-        ], $overrides));
+        ], $overrides);
+
+        $role = $attributes['role'];
+        unset($attributes['role']);
+
+        // Not mass-assignable — see User::$fillable.
+        $user = new User($attributes);
+        $user->role = $role;
+        $user->save();
+
+        return $user;
     }
 
     /**

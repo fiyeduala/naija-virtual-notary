@@ -45,14 +45,26 @@ trait Fixtures
      */
     protected function makeClient(array $overrides = []): User
     {
-        return User::create(array_merge([
+        $attributes = array_merge([
             'full_name'         => 'Client ' . $this->nextSeq(),
             'email'             => 'client' . $this->fixtureSeq . '@example.test',
             'password'          => 'password',
             'role'              => 'client',
             'status'            => 'active',
             'email_verified_at' => now(),
-        ], $overrides));
+        ], $overrides);
+
+        // Lifted out and set directly, exactly as the application does: role
+        // is not mass-assignable (see User::$fillable). The override still
+        // works, so makeClient(['role' => 'admin']) reads the same as before.
+        $role = $attributes['role'];
+        unset($attributes['role']);
+
+        $user = new User($attributes);
+        $user->role = $role;
+        $user->save();
+
+        return $user;
     }
 
     /**
@@ -67,14 +79,17 @@ trait Fixtures
 
         // Verified for the same reason makeClient() is — the desk is behind
         // EnsureEmailIsVerified too.
-        $user = User::create([
+        $user = new User([
             'full_name'         => 'Notary ' . $seq,
             'email'             => 'notary' . $seq . '@example.test',
             'password'          => 'password',
-            'role'              => 'notary',
             'status'            => 'active',
             'email_verified_at' => now(),
         ]);
+
+        // Not mass-assignable — see User::$fillable.
+        $user->role = 'notary';
+        $user->save();
 
         return NotaryProfile::create(array_merge([
             'user_id'                => $user->id,

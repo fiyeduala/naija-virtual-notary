@@ -225,7 +225,6 @@ class ImportWordPress extends Command
                 'full_name' => $name,
                 'email'     => $email,
                 'phone'     => $m['billing_phone'] ?? $m['phone'] ?? $user->phone,
-                'role'      => $role,
                 'status'    => 'active',
                 // These people verified their address on the old site years
                 // ago. Sending 421 of them through the OTP gate again, on a
@@ -251,10 +250,21 @@ class ImportWordPress extends Command
                     ARRAY_FILTER_USE_KEY
                 );
 
-                $this->bump('users.fields_left_alone', 6 - count($attributes));
+                $this->bump('users.fields_left_alone', 5 - count($attributes));
             }
 
             $user->fill($attributes);
+
+            // Assigned rather than filled, because role is not mass-assignable
+            // (see User::$fillable) — and the column defaults to 'client', so
+            // an imported notary would quietly arrive as a client if this were
+            // left to fill(). The blank-only rule above applies to it too: a
+            // role changed on purpose in the panel must survive a re-run.
+            if (blank($user->role)) {
+                $user->role = $role;
+            } else {
+                $this->bump('users.fields_left_alone');
+            }
 
             if (! $user->exists) {
                 // Cast 'hashed' turns this into a bcrypt hash of a string

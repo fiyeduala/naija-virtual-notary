@@ -16,8 +16,27 @@ class User extends Authenticatable implements FilamentUser, HasName
 {
     use Notifiable, SoftDeletes;
 
+    /**
+     * The columns a form may write.
+     *
+     * 'role' is deliberately absent, and this is the only reason it reads as
+     * a short list. It is the privilege column — client, notary or admin —
+     * and every place that sets it already knows which of the three it means:
+     * a public signup is always a client, the partner form always a notary,
+     * the seeder always the admin. While it was fillable, one future
+     * User::create($request->validated()) or $user->update($request->all())
+     * would have handed a stranger their own role, and the line that did it
+     * would have looked like every other line around it.
+     *
+     * So it is assigned as a property instead, the way recruitment_role and
+     * referred_by_organization_id already are. The column defaults to
+     * 'client', which means a creation path that forgets to assign one
+     * produces a client rather than an error — the safe direction to fail in,
+     * but a quiet one, so SecurityHardeningTest checks both that the column
+     * cannot be mass-assigned and that the paths which do set it still do.
+     */
     protected $fillable = [
-        'full_name', 'email', 'phone', 'password', 'role', 'status',
+        'full_name', 'email', 'phone', 'password', 'status',
         'email_verified_at', 'otp_code', 'otp_expires_at',
         'mfa_enabled', 'last_login_at',
     ];

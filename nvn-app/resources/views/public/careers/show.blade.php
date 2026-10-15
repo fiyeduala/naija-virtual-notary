@@ -322,7 +322,12 @@
 @endphp
 
 @if ($schema)
-    <script type="application/ld+json">{!! json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
+    {{-- Printed raw, so the flags matter: the four HEX ones encode the
+         angle brackets, ampersand and quotes as unicode escapes, which
+         JSON-LD reads the same way and a browser cannot read as the end of
+         this element. A vacancy title is typed by an admin, and nothing else
+         on this line escapes it. Same set Laravel's Js::from() uses. --}}
+    <script type="application/ld+json">{!! json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) !!}</script>
 @endif
 
 @endsection

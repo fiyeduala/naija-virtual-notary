@@ -86,7 +86,10 @@
             // parser mis-reads a multi-line nested call and truncates it.
             $slotsJson = collect($slotDays)
                 ->map(fn ($daySlots) => collect($daySlots)->map(fn ($s) => ['start' => $s['start'], 'label' => $s['label']])->all())
-                ->toJson();
+                // Same flag set Js::from() uses: this is handed to the page
+                // raw further down, so a category label containing an angle
+                // bracket must not be able to close the script element.
+                ->toJson(JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
         @endphp
 
         <h2 style="margin-top:28px; margin-bottom:4px;">When?</h2>

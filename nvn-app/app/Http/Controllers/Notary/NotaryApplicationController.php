@@ -27,14 +27,18 @@ class NotaryApplicationController extends Controller
     public function store(NotaryApplicationRequest $request): RedirectResponse
     {
         $user = DB::transaction(function () use ($request) {
-            $user = User::create([
+            $user = new User([
                 'full_name' => $request->validated('full_name'),
                 'email'     => $request->validated('email'),
                 'phone'     => $request->validated('phone'),
                 'password'  => $request->validated('password'),
-                'role'      => UserRole::Notary,
                 'status'    => 'pending',
             ]);
+
+            // Assigned rather than filled — role is not mass-assignable.
+            // See User::$fillable.
+            $user->role = UserRole::Notary;
+            $user->save();
 
             $profile = NotaryProfile::create([
                 'user_id'              => $user->id,
