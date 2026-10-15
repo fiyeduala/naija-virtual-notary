@@ -19,7 +19,10 @@ use Illuminate\Support\Facades\Route;
 // Guest-only
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'show'])->name('register');
-    Route::post('/register', [RegisterController::class, 'store']);
+    // Throttled: each submission sends an OTP email, so an unthrottled loop
+    // here is a mail flood aimed at our own sending reputation.
+    Route::post('/register', [RegisterController::class, 'store'])
+        ->middleware('throttle:5,60');
 
     Route::get('/login', [LoginController::class, 'show'])->name('login');
     Route::post('/login', [LoginController::class, 'store']);
@@ -34,8 +37,13 @@ Route::middleware('guest')->group(function () {
 // Authenticated, but email may still be unverified
 Route::middleware('auth')->group(function () {
     Route::get('/verify', [VerifyOtpController::class, 'show'])->name('verify.show');
-    Route::post('/verify', [VerifyOtpController::class, 'verify'])->name('verify.submit');
-    Route::post('/verify/resend', [VerifyOtpController::class, 'resend'])->name('verify.resend');
+    // Guessing a six-digit code is cheap for an attacker and expensive for us
+    // (a bcrypt comparison per guess), so the rate is capped here and the
+    // number of wrong codes an account may offer is capped in OtpService.
+    Route::post('/verify', [VerifyOtpController::class, 'verify'])
+        ->middleware('throttle:10,10')->name('verify.submit');
+    Route::post('/verify/resend', [VerifyOtpController::class, 'resend'])
+        ->middleware('throttle:5,10')->name('verify.resend');
 
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 });

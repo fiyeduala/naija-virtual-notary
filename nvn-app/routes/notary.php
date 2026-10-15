@@ -24,7 +24,10 @@ use Illuminate\Support\Facades\Route;
 // Partner application (public — marketing page + account creation form in one)
 Route::get('/partner-with-us', [NotaryApplicationController::class, 'show'])
     ->name('notary.apply');
+// Throttled to match /organizations/apply: the form is unauthenticated and
+// accepts a 10MB file per submission straight onto the private disk.
 Route::post('/partner-with-us', [NotaryApplicationController::class, 'store'])
+    ->middleware('throttle:5,60')
     ->name('partner');
 
 // Paystack webhook — external caller, CSRF-excluded, no auth
