@@ -348,4 +348,37 @@ return [
         'legacy_through_id' => (int) env('AUDIT_LEGACY_THROUGH_ID', 0),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Response security headers
+    |--------------------------------------------------------------------------
+    |
+    | Read by the SecurityHeaders middleware. Only the two below that
+    | can break a working site are configurable; the rest of the headers are
+    | unconditional, because there is no version of this application that
+    | wants its documents framed by a stranger or its type sniffed.
+    |
+    | csp_enforce is the switch that matters. The policy ships report-only:
+    | the browser blocks nothing and posts what it would have blocked to
+    | /csp-report, which is written to the log. Collect those for a few days of
+    | real traffic — a notarization session, a Paystack checkout, the panel —
+    | fix what the policy got wrong, and only then:
+    |
+    |   NVN_CSP_ENFORCE=true
+    |
+    | hsts_include_subdomains is off because this app is a subdomain of a
+    | domain that hosts other sites. Turn it on once it is on a domain of its
+    | own and every host under that domain is HTTPS. Do not add preload: that
+    | one is submitted to a list browsers ship, and it is not easily undone.
+    |
+    */
+    'security' => [
+        'csp_enabled'    => env('NVN_CSP_ENABLED', true),
+        'csp_enforce'    => env('NVN_CSP_ENFORCE', false),
+        'csp_report_uri' => env('NVN_CSP_REPORT_URI', '/csp-report'),
+
+        'hsts_max_age'            => (int) env('NVN_HSTS_MAX_AGE', 31536000),
+        'hsts_include_subdomains' => env('NVN_HSTS_INCLUDE_SUBDOMAINS', false),
+    ],
+
 ];

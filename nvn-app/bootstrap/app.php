@@ -65,6 +65,18 @@ return Application::configure(basePath: dirname(__DIR__))
         // Paystack posts to this route from outside — exclude it from CSRF.
         $middleware->validateCsrfTokens(except: [
             'webhooks/paystack',
+            // Posted by the browser itself out of its own reporting queue.
+            // It holds no session and cannot carry a token. See
+            // CspReportController.
+            'csp-report',
+        ]);
+
+        // The response headers every page gets. Appended, so they are set on
+        // the way out once everything else has had its say. The admin panel
+        // assembles its own stack and lists this separately — see
+        // AdminPanelProvider.
+        $middleware->web(append: [
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

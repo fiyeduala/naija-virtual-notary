@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\SecurityHeaders;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -98,6 +99,11 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+                // The panel does not use the `web` group, so the response
+                // headers appended there never reach these pages. Listed
+                // again here on purpose: the panel is where the documents,
+                // the bank details and the audit log are.
+                SecurityHeaders::class,
             ])
             ->authMiddleware([
                 Authenticate::class,

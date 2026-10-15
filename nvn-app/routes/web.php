@@ -49,6 +49,15 @@ Route::get('/email/unsubscribe/{user}', [\App\Http\Controllers\EmailPreferencesC
 Route::get('/email/resubscribe/{user}', [\App\Http\Controllers\EmailPreferencesController::class, 'resubscribe'])
     ->name('email.resubscribe')->middleware('signed');
 
+// Where a browser posts what the Content-Security-Policy would have blocked.
+// Report-only until NVN_CSP_ENFORCE is set, so this is how the policy gets
+// corrected before it ever starts enforcing. CSRF-excluded in
+// bootstrap/app.php: the browser posts this by itself and carries no token.
+// Throttled, and it answers 204 with no body however it is prodded.
+Route::post('/csp-report', [\App\Http\Controllers\CspReportController::class, 'store'])
+    ->middleware('throttle:60,1')
+    ->name('csp.report');
+
 require __DIR__ . '/auth.php';      // Phase 2 — auth + OTP + verify + notary placeholder
 require __DIR__ . '/notary.php';    // Phase 3 — notary onboarding + admin review + webhook
 require __DIR__ . '/client.php';    // Phase 4 — client request flow + real client.dashboard
