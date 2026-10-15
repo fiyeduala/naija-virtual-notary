@@ -7,7 +7,9 @@ use App\Services\Video\AgoraVideoProvider;
 use App\Services\Video\DailyVideoProvider;
 use App\Services\Video\ManualVideoProvider;
 use App\Services\Video\VideoProvider;
+use App\Validation\NvnValidator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -34,5 +36,13 @@ class AppServiceProvider extends ServiceProvider
             $app['hash'],
             $config['model'],
         ));
+
+        // Every validator in the application is ours, so that the one rule
+        // NvnValidator narrows — no carriage returns inside an email address —
+        // cannot be forgotten on a form added later.
+        Validator::resolver(
+            fn ($translator, $data, $rules, $messages = [], $attributes = []) =>
+                new NvnValidator($translator, $data, $rules, $messages, $attributes)
+        );
     }
 }
