@@ -1,0 +1,50 @@
+# Blog media: article cover images and editor attachments.
+#
+# This directory is inside the web root, so Apache serves what is in it
+# straight off disk. The code that writes here already decides each file's
+# extension from its detected type rather than from the name the browser
+# sent (see App\Support\BlogAttachment), so a PHP script cannot land here by
+# calling itself an image. This file is the second lock — for a bypass, for
+# a second upload path added later, and for a file that arrives by FTP
+# during a host move.
+#
+# Keep it. A migration that drops dotfiles removes it silently, and nothing
+# else will complain.
+
+# 1. Nothing in here is a program. By name, covering every handler.
+<FilesMatch "\.(php|php[0-9]|phps|phtml|phar|pht|cgi|pl|py|rb|sh|lua|jsp|asp|aspx)$">
+    Require all denied
+</FilesMatch>
+
+# 2. And by type, in case a handler is attached without matching the name.
+#    RemoveHandler/RemoveType are mod_mime and are always safe to state.
+RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py
+RemoveType .php .php3 .php4 .php5 .php7 .php8 .phtml .phar
+
+# 3. php_flag is mod_php only. Unguarded it is a 500 on a host running
+#    PHP-FPM or LSAPI — which this one does — so each guard is required,
+#    not tidiness.
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php5.c>
+    php_flag engine off
+</IfModule>
+
+<IfModule mod_headers.c>
+    # 4. An image is an image. Without this a browser may sniff a file we
+    #    stored as a .png, decide it is really HTML, and run it.
+    Header always set X-Content-Type-Options "nosniff"
+
+    # 5. And anything scriptable served from here runs with nothing: no
+    #    scripts, no network, and a unique origin, so it cannot read a
+    #    cookie or reach the session that fetched it. This is what makes
+    #    a mislabelled upload harmless if one ever gets through.
+    Header always set Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox"
+</IfModule>
+
+# 6. No listing of what has been uploaded here, and no CGI.
+Options -Indexes -ExecCGI

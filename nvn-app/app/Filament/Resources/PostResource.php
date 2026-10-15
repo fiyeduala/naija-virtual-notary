@@ -8,6 +8,7 @@ use App\Models\Post;
 use App\Models\PostComment;
 use App\Models\User;
 use App\Support\AuditLogger;
+use App\Support\BlogAttachment;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -98,6 +99,16 @@ class PostResource extends Resource
                         ->fileAttachmentsDisk('blog')
                         ->fileAttachmentsDirectory('inline')
                         ->fileAttachmentsVisibility('public')
+                        // The attachment disk is public/blog-media, which the
+                        // web server reads straight off disk. Filament offers
+                        // no accepted-types option for editor attachments, so
+                        // the check is made here, on the detected type rather
+                        // than the sent one: three raster formats, nothing a
+                        // server executes, and no SVG — an SVG is a script
+                        // container, and an attachment is not worth one.
+                        ->saveUploadedFileAttachmentsUsing(
+                            fn ($file) => BlogAttachment::store($file)
+                        )
                         ->toolbarButtons([
                             'bold', 'italic', 'underline', 'strike', 'link',
                             'h2', 'h3', 'blockquote', 'codeBlock',

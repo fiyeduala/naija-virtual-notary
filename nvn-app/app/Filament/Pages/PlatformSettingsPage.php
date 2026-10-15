@@ -202,10 +202,12 @@ class PlatformSettingsPage extends Page implements HasForms
                             ->imagePreviewHeight('60')
                             ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
                             ->maxSize(2048)
-                            // A predictable name so it can also be dropped in by
-                            // FTP during a host move, without a database row.
+                            // Predictable name, extension from the *detected*
+                            // type — never from the browser. See Branding.
                             ->getUploadedFileNameForStorageUsing(
-                                fn ($file) => 'logo.' . $file->getClientOriginalExtension()),
+                                fn ($file) => \App\Support\Branding::storedFileName(
+                                    'logo', $file->getMimeType()
+                                )),
 
                         Forms\Components\FileUpload::make('site_icon')
                             ->label('Icon (favicon & app icon)')
@@ -222,7 +224,9 @@ class PlatformSettingsPage extends Page implements HasForms
                             ->acceptedFileTypes(['image/png', 'image/x-icon', 'image/svg+xml', 'image/webp'])
                             ->maxSize(1024)
                             ->getUploadedFileNameForStorageUsing(
-                                fn ($file) => 'icon.' . $file->getClientOriginalExtension()),
+                                fn ($file) => \App\Support\Branding::storedFileName(
+                                    'icon', $file->getMimeType()
+                                )),
                     ])->columns(2),
 
                 // ── Bulk email pacing ────────────────────────────────────
