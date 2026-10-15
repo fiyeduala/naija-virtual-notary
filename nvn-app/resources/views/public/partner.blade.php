@@ -244,7 +244,7 @@
             <div class="process-card">
                 <div class="process-num">1</div>
                 <h3>Register &amp; Submit Credentials</h3>
-                <p>Complete the application form below. Upload your valid ID, oath of office, and enter your notary licence reference and Supreme Court Number (SCN). An onboarding fee of ₦30,000 applies.</p>
+                <p>Complete the application form below. Upload your valid ID, oath of office, and enter your notary licence reference and Supreme Court Number (SCN). A partner fee of ₦30,000 covers your first year on the platform.</p>
             </div>
             <div class="process-card">
                 <div class="process-num">2</div>
@@ -297,7 +297,7 @@
                 </li>
                 <li>
                     <svg class="check-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-                    Credit/debit card for ₦30,000 onboarding fee
+                    Credit/debit card for the ₦30,000 partner fee (one year)
                 </li>
             </ul>
             <p style="margin-top:16px;">After approval you will upload your e-signature, official stamp, and seal through a secure link sent to your email.</p>
@@ -433,7 +433,7 @@
                     </div>
 
                     <button type="submit" class="submit-btn">Submit application &rarr;</button>
-                    <p class="form-note">After submitting you will verify your email and pay a one-time ₦30,000 onboarding fee. Your profile and seal uploads happen after admin approval.</p>
+                    <p class="form-note">After submitting you will verify your email and pay the ₦30,000 partner fee, which covers your first year. Your profile and seal uploads happen after admin approval.</p>
                 </form>
             </div>
         </div>
