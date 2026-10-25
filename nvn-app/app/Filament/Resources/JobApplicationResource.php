@@ -4,10 +4,13 @@ namespace App\Filament\Resources;
 
 use App\Enums\ApplicationStage;
 use App\Enums\RecruitmentRole;
+use App\Exceptions\StageTransitionException;
 use App\Filament\Resources\JobApplicationResource\Pages;
 use App\Models\JobApplication;
 use App\Models\User;
 use App\Models\Vacancy;
+use App\Services\Recruitment\ApplicationStageService;
+use App\Services\Recruitment\AssessmentService;
 use App\Support\CsvSafe;
 use App\Support\RecruitmentPermission;
 use App\Support\SourceAttribution;
@@ -17,6 +20,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Response;
 
 /**
@@ -275,11 +279,30 @@ class JobApplicationResource extends Resource
      * candidate individually and reports what actually happened. A bulk action
      * that silently skips half a selection is worse than one that refuses.
      *
-     * Note what is NOT here: bulk reject. Declining twenty people with one
-     * click and one reason is exactly the automation the brief rules out, and
-     * the per-record Decline action asks for a reason each time for that
-     * reason. Closing a vacancy is where a batch decline lives, and there it
-     * is an explicit, named choice.
+     * There are four, and they are separate on purpose, because they do
+     * different things to a person: marking a pile as picked up tells nobody
+     * anything, sending the exercise puts an email in somebody's inbox with a
+     * deadline on it, moving a stage forward is an internal record, and
+     * declining ends it. One "advance" button covering all of that would mean
+     * a mixed selection quietly emailing half of it, so each button is named
+     * after the thing it actually does and refuses the rows it does not cover.
+     *
+     * On bulk decline, which this class previously refused to offer: the
+     * objection was that declining twenty people with one click is the kind of
+     * automation the brief rules out. On reflection that conflated two things.
+     * What the brief rules out is a machine deciding — a score, a rank, an
+     * inference. A reviewer who has read twenty applications and decided
+     * against them is not automation, and making them press the same button
+     * twenty times does not make the decision any more considered. So it is
+     * here, and what the brief asks for is kept where it belongs: a written
+     * reason is required, every candidate gets their own stage event, their
+     * own audit row and their own email, and nothing picks the selection but
+     * the person who made it.
+     *
+     * Every one of these goes through ApplicationStageService, so the state
+     * machine, the prerequisites, the row lock and the per-row permission
+     * check all still apply to each candidate in the batch exactly as they do
+     * to one on their own screen.
      *
      * @return array<\Filament\Tables\Actions\BulkAction>
      */
@@ -296,39 +319,254 @@ class JobApplicationResource extends Resource
                 ->modalDescription('This only records that somebody has picked them up. No candidate is told anything and nothing is sent.')
                 ->deselectRecordsAfterCompletion()
                 ->action(function ($records) {
-                    $stages = app(\App\Services\Recruitment\ApplicationStageService::class);
+                    $stages = app(ApplicationStageService::class);
                     $actor  = RecruitmentPermission::current();
 
-                    $moved = 0;
-                    $left  = [];
-
-                    foreach ($records as $application) {
-                        // Per candidate, not per selection: one that cannot
-                        // move must not stop the rest, and must be named.
+                    static::runBatch($records, 'marked as being reviewed', function (JobApplication $application) use ($stages, $actor) {
+                        // Checked here rather than left to the service: moving
+                        // to the stage somebody is already at is a deliberate
+                        // no-op in move(), so without this they would be
+                        // counted as moved and nobody would be any the wiser.
                         if ($application->stage !== ApplicationStage::Applied) {
-                            $left[] = $application->reference;
-                            continue;
+                            throw new StageTransitionException('They were already past this point.');
                         }
 
-                        try {
-                            $stages->beginReview($application, $actor);
-                            $moved++;
-                        } catch (\Throwable $e) {
-                            $left[] = $application->reference;
-                        }
-                    }
+                        $stages->beginReview($application, $actor);
+                    });
+                }),
 
-                    Notification::make()
-                        ->title($moved . ' marked as being reviewed')
-                        ->body($left === []
-                            ? null
-                            : 'Left alone: ' . implode(', ', array_slice($left, 0, 10))
-                                . (count($left) > 10 ? ' and ' . (count($left) - 10) . ' more' : '')
-                                . '. They were already past this point.')
-                        ->success()
-                        ->send();
+            /*
+             * The shortlist action, and the one the pile is actually worked
+             * into: these are the applications that have been read and are
+             * worth an exercise.
+             *
+             * It is its own button and not part of "move to the next stage"
+             * because the assessment stage cannot be reached without an
+             * exercise existing — the service refuses it, correctly, since a
+             * candidate recorded as invited to something nobody sent has a
+             * deadline they were never told about. Pressing this sends real
+             * email, so it says so.
+             */
+            Tables\Actions\BulkAction::make('invite_assessment')
+                ->label('Send the exercise to these')
+                ->icon('heroicon-o-paper-airplane')
+                ->color('primary')
+                ->visible(fn () => RecruitmentPermission::check(RecruitmentPermission::MOVE_STAGE))
+                ->modalHeading('Send the exercise')
+                ->modalDescription(fn (?Collection $records) => ($records?->count() ?? 0)
+                    . ' selected. Each one gets the exercise attached to their own vacancy, with their own deadline counted from when it actually goes out. Anyone whose vacancy has no exercise set, or who is past this point already, is named and left alone.')
+                ->form([
+                    Forms\Components\Radio::make('delay_working_days')
+                        ->label('When should it go out?')
+                        ->options([
+                            0 => 'Now',
+                            1 => 'In one working day',
+                            2 => 'In two working days',
+                            3 => 'In three working days',
+                        ])
+                        ->default(0)
+                        ->required()
+                        ->helperText('Working days in ' . config('recruitment.timezone') . ', skipping weekends and any configured holidays. Before each one sends, the stage, the deadline and whether they withdrew are all checked again.'),
+
+                    Forms\Components\TextInput::make('due_working_days')
+                        ->label('Working days they get to do it')
+                        ->numeric()
+                        ->minValue(1)
+                        ->maxValue(20)
+                        ->helperText('Leave blank for each vacancy\'s own setting, which is the usual answer when the selection spans more than one role.'),
+                ])
+                ->deselectRecordsAfterCompletion()
+                ->action(function ($records, array $data) {
+                    $assessments = app(AssessmentService::class);
+                    $actor       = RecruitmentPermission::current();
+
+                    $options = [
+                        'delay_working_days' => (int) ($data['delay_working_days'] ?? 0),
+                        'due_working_days'   => filled($data['due_working_days'] ?? null)
+                            ? (int) $data['due_working_days']
+                            : null,
+                    ];
+
+                    static::runBatch($records, 'queued for sending', function (JobApplication $application) use ($assessments, $actor, $options) {
+                        // Mirrors the single-record action's own condition, so
+                        // a mixed selection says "they are past this point"
+                        // rather than reporting a state-machine error.
+                        if (! in_array($application->stage, [ApplicationStage::Applied, ApplicationStage::InitialReview], true)) {
+                            throw new StageTransitionException('They are past the point where an exercise is sent.');
+                        }
+
+                        $assessments->invite($application, $actor, $options);
+                    });
+                }),
+
+            /*
+             * One step along the pipeline, for the moves that are an internal
+             * record and nothing else: interviewed, so on to the checks.
+             *
+             * It walks each candidate from where they actually are, so a
+             * mixed selection works and nobody is moved anywhere they could
+             * not have been moved one at a time. The two stages that assert
+             * something about the world — invited, and submitted — refuse
+             * themselves through the service's prerequisites and are reported
+             * with the service's own wording.
+             */
+            Tables\Actions\BulkAction::make('advance')
+                ->label('Move to the next stage')
+                ->icon('heroicon-o-arrow-right-circle')
+                ->color('gray')
+                ->visible(fn () => RecruitmentPermission::check(RecruitmentPermission::MOVE_STAGE))
+                ->requiresConfirmation()
+                ->modalHeading('Move these to the next stage')
+                ->modalDescription(fn (?Collection $records) => static::advancePreview($records))
+                ->deselectRecordsAfterCompletion()
+                ->action(function ($records) {
+                    $stages = app(ApplicationStageService::class);
+                    $actor  = RecruitmentPermission::current();
+
+                    static::runBatch($records, 'moved on', function (JobApplication $application) use ($stages, $actor) {
+                        $next = $application->stage->next();
+
+                        if ($next === null) {
+                            throw new StageTransitionException($application->stage->isActive()
+                                ? 'There is nothing after ' . $application->stage->label() . '.'
+                                : 'This one is closed. Reopening it is a decision with a reason, taken on its own screen.');
+                        }
+
+                        if ($next === ApplicationStage::AssessmentInvited) {
+                            throw new StageTransitionException(
+                                'Use "Send the exercise to these" — the assessment stage needs an exercise actually sent.',
+                            );
+                        }
+
+                        $stages->move($application, $next, $actor);
+                    });
+                }),
+
+            /*
+             * The end of it, for the ones who are not going forward.
+             *
+             * The reason is required and is kept internally: it is what a
+             * colleague reads next year when the same person applies again,
+             * and it is never in the email. The email itself is one per
+             * candidate, addressed to them, and is on by default because the
+             * alternative is leaving people waiting indefinitely.
+             */
+            Tables\Actions\BulkAction::make('decline')
+                ->label('Decline these')
+                ->icon('heroicon-o-x-circle')
+                ->color('danger')
+                ->visible(fn () => RecruitmentPermission::check(RecruitmentPermission::MOVE_STAGE))
+                ->modalHeading('Decline these applications')
+                ->modalDescription(fn (?Collection $records) => ($records?->count() ?? 0)
+                    . ' selected. Each is recorded as declined with the reason below, and anything still queued to be sent to them is called off. Anyone already closed is named and left alone.')
+                ->form([
+                    Forms\Components\Textarea::make('reason')
+                        ->label('Why')
+                        ->rows(3)
+                        ->required()
+                        ->maxLength(1000)
+                        ->helperText('Kept internally and recorded against every candidate in the selection. They are told they were not successful; this reasoning is not sent to them. If the selection needs more than one reason, it needs more than one pass.'),
+
+                    Forms\Components\Toggle::make('notify')
+                        ->label('Tell them')
+                        ->default(true)
+                        ->helperText('On, because leaving somebody waiting indefinitely is the worst version of this. One email each, to them. Turn it off only if you are writing to them yourself.'),
+                ])
+                ->deselectRecordsAfterCompletion()
+                ->action(function ($records, array $data) {
+                    $stages = app(ApplicationStageService::class);
+                    $actor  = RecruitmentPermission::current();
+                    $reason = (string) $data['reason'];
+                    $notify = (bool) ($data['notify'] ?? true);
+
+                    static::runBatch($records, 'declined', function (JobApplication $application) use ($stages, $actor, $reason, $notify) {
+                        if (! $application->isActive()) {
+                            throw new StageTransitionException('They were already closed.');
+                        }
+
+                        $stages->reject($application, $actor, $reason, $notify);
+                    });
                 }),
         ];
+    }
+
+    /**
+     * What "the next stage" means for this particular selection.
+     *
+     * Shown before the move, grouped, so somebody who has selected a whole
+     * filtered page can see that it is about to send four people to the
+     * checks and leave two where they are — which is the question you have
+     * when you press a button on a list rather than on a person.
+     *
+     * @param  \Illuminate\Support\Collection<int, JobApplication>  $records
+     */
+    private static function advancePreview(?Collection $records): string
+    {
+        $counts = [];
+
+        foreach ($records ?? collect() as $application) {
+            $next = $application->stage->next();
+
+            $key = $next === null || $next === ApplicationStage::AssessmentInvited
+                ? 'left where they are'
+                : 'to ' . $next->label();
+
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+
+        $parts = [];
+
+        foreach ($counts as $label => $count) {
+            $parts[] = $count . ' ' . $label;
+        }
+
+        return ($records?->count() ?? 0) . ' selected: ' . implode(', ', $parts)
+            . '. Nothing is sent to anybody. Each one is checked on its own, and whoever cannot move is named afterwards.';
+    }
+
+    /**
+     * Run a bulk action one candidate at a time, and say what happened.
+     *
+     * The loop is per candidate and so is the failure: one who cannot move
+     * must not stop the rest, and must not vanish either. Refusals are
+     * grouped by the reason the service gave, because "four of them have not
+     * submitted the exercise" is the useful form of that information and a
+     * flat list of twelve references is not.
+     *
+     * @param  iterable<JobApplication>  $records
+     * @param  callable(JobApplication): void  $work
+     */
+    private static function runBatch(iterable $records, string $done, callable $work): void
+    {
+        $count   = 0;
+        $skipped = [];
+
+        foreach ($records as $application) {
+            try {
+                $work($application);
+                $count++;
+            } catch (\Throwable $e) {
+                // Including the unexpected: a batch that dies halfway leaves
+                // the desk with no idea which half it got through.
+                $skipped[$e->getMessage()][] = $application->reference;
+            }
+        }
+
+        $groups = [];
+
+        foreach ($skipped as $reason => $references) {
+            $shown = array_slice($references, 0, 8);
+            $rest  = count($references) - count($shown);
+
+            $groups[] = $reason . ' (' . implode(', ', $shown)
+                . ($rest > 0 ? ' and ' . $rest . ' more' : '') . ')';
+        }
+
+        Notification::make()
+            ->title($count . ' ' . $done)
+            ->body($groups === [] ? null : 'Left alone: ' . implode(' ', $groups))
+            ->status($count > 0 ? 'success' : 'warning')
+            ->send();
     }
 
     /**
