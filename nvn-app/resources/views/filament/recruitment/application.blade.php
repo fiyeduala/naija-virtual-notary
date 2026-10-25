@@ -704,12 +704,15 @@
         <ol class="space-y-3 text-sm">
             @forelse ($application->stageEvents->sortByDesc('id') as $event)
                 <li class="border-l-2 border-gray-200 pl-3 dark:border-gray-700">
+                    {{-- No tryFrom() here: both columns are cast to
+                         ApplicationStage on the model, so these are already enum
+                         instances, and converting one a second time is a TypeError
+                         rather than a no-op. from_stage is nullable, because the
+                         first move comes from nowhere; to_stage never is. --}}
                     <p class="text-gray-950 dark:text-white">
-                        {{ $event->from_stage
-                            ? (\App\Enums\ApplicationStage::tryFrom($event->from_stage)?->label() ?? $event->from_stage) . ' → '
-                            : '' }}
+                        {{ $event->from_stage ? $event->from_stage->label() . ' → ' : '' }}
                         <span class="font-medium">
-                            {{ \App\Enums\ApplicationStage::tryFrom($event->to_stage)?->label() ?? $event->to_stage }}
+                            {{ $event->to_stage->label() }}
                         </span>
                     </p>
                     <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">

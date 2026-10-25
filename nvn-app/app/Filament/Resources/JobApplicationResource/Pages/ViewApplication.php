@@ -578,11 +578,11 @@ class ViewApplication extends ViewRecord
             ->label('Approve the draft offer')
             ->icon('heroicon-o-check')
             ->visible(fn () => $this->can(RecruitmentPermission::APPROVE_OFFER)
-                && $this->record->offer()?->status === Offer::DRAFT)
+                && $this->record->offer?->status === Offer::DRAFT)
             ->requiresConfirmation()
             ->modalDescription('Records that you have read these terms and they are the ones to send. It does not send them.')
             ->action(fn () => $this->run(
-                fn () => app(OfferService::class)->approve($this->record->offer(), $this->actor()),
+                fn () => app(OfferService::class)->approve($this->record->offer, $this->actor()),
                 'Approved and ready to send',
             ));
     }
@@ -594,11 +594,11 @@ class ViewApplication extends ViewRecord
             ->icon('heroicon-o-paper-airplane')
             ->color('success')
             ->visible(fn () => $this->can(RecruitmentPermission::APPROVE_OFFER)
-                && $this->record->offer()?->isSendable())
+                && $this->record->offer?->isSendable())
             ->requiresConfirmation()
             ->modalDescription('The candidate gets an email telling them an offer is waiting, and a link to read it after signing in. The terms are not in the email and the document is never attached.')
             ->action(fn () => $this->run(
-                fn () => app(OfferService::class)->send($this->record->offer(), $this->actor()),
+                fn () => app(OfferService::class)->send($this->record->offer, $this->actor()),
                 'Queued for sending',
             ));
     }
@@ -620,7 +620,7 @@ class ViewApplication extends ViewRecord
             ->icon('heroicon-o-clipboard-document-list')
             ->visible(fn () => $this->can(RecruitmentPermission::APPROVE_OFFER)
                 && $this->record->isActive()
-                && $this->record->offer()?->status === Offer::ACCEPTED)
+                && $this->record->offer?->status === Offer::ACCEPTED)
             ->requiresConfirmation()
             ->modalHeading('Ask for the pre-employment checks')
             ->modalDescription(fn () => 'Builds the checklist from what this vacancy asks for'
