@@ -46,10 +46,12 @@ Route::prefix('organizations')->name('organization.')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     });
 
-    // Applying to partner. The form is public, so the POST is throttled.
+    // Applying to partner. The form is public, so the POST is throttled --
+    // by contact_email and by IP, since one body is often one office.
+    // See AppServiceProvider.
     Route::get('/apply', [OrganizationApplicationController::class, 'show'])->name('apply.show');
     Route::post('/apply', [OrganizationApplicationController::class, 'store'])
-        ->middleware('throttle:5,60')->name('apply.store');
+        ->middleware('throttle:organization-application')->name('apply.store');
 });
 
 // Somewhere to type a code that arrived by telephone or on paper.

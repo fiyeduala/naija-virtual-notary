@@ -45,8 +45,10 @@ Route::get('/careers/{vacancy:slug}/apply', [ApplicationController::class, 'crea
 
 // Throttled because it is an unauthenticated form that writes a row and a
 // file. The duplicate rule itself is a database constraint, not this limit.
+// Two limits, not one: a room of people behind a single office address must
+// not lock each other out. See AppServiceProvider.
 Route::post('/careers/{vacancy:slug}/apply', [ApplicationController::class, 'store'])
-    ->middleware('throttle:6,60')
+    ->middleware('throttle:application')
     ->name('careers.apply.store');
 
 Route::get('/careers/{vacancy:slug}/applied/{reference}', [ApplicationController::class, 'done'])

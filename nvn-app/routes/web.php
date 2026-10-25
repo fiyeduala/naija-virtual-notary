@@ -32,14 +32,15 @@ Route::get('/blog/{post}', [\App\Http\Controllers\BlogController::class, 'show']
 //
 // The beacon is throttled generously: it fires at most once per article per
 // reader, but a reader with several tabs open is normal and should not be
-// refused. The comment throttle matches /organizations/apply, the other
-// unauthenticated public form on the site.
+// refused. The comment throttle is named rather than a bare rate: it counts
+// the commenter and the address separately, so one busy network does not
+// silence everybody on it. See AppServiceProvider.
 Route::post('/blog/{post}/read', [\App\Http\Controllers\BlogController::class, 'read'])
     ->middleware('throttle:30,1')
     ->name('blog.read');
 
 Route::post('/blog/{post}/comment', [\App\Http\Controllers\PostCommentController::class, 'store'])
-    ->middleware('throttle:5,60')
+    ->middleware('throttle:comment')
     ->name('blog.comment');
 // Email preferences — the unsubscribe link at the foot of an announcement.
 // Signed rather than authenticated: making someone log in to stop receiving

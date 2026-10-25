@@ -4,7 +4,9 @@ use App\Support\CloudflareProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /*
 | Naija Virtual Notary — application bootstrap.
@@ -80,5 +82,34 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        // A 429 is an HttpException, and Laravel reports none of those. That
+        // is the right default almost everywhere and the wrong one here: a
+        // limit set too tight turns real people away, and it does it in
+        // silence, so the only way we ever learn of it is somebody telling
+        // us -- which is how we learned of it. Logging the refusal turns a
+        // report that the site sometimes says too many requests into a line
+        // naming the form, so a limit can be judged on what happened rather
+        // than on a guess about which form was meant.
         //
+        // Hooked onto rendering rather than reporting, which looks like the
+        // obvious home for it and does not work: stopIgnoring() matches the
+        // ignore list by exact class name, and what is on that list is
+        // HttpException, not ThrottleRequestsException. Naming the subclass
+        // removes nothing and the callback never runs. Returning null here
+        // means we have not handled it, so Laravel goes on to render the
+        // page in resources/views/errors/429.blade.php as usual.
+        $exceptions->render(function (ThrottleRequestsException $e, Request $request) {
+            // The route and the address, and nothing the visitor typed. We
+            // want to know which form is too tight and roughly who it hit,
+            // not to keep a copy of their email in a log file.
+            Log::warning('Throttled', [
+                'route'       => $request->route()?->getName() ?? $request->path(),
+                'method'      => $request->method(),
+                'ip'          => $request->ip(),
+                'user_id'     => $request->user()?->id,
+                'retry_after' => $e->getHeaders()['Retry-After'] ?? null,
+            ]);
+
+            return null;
+        });
     })->create();

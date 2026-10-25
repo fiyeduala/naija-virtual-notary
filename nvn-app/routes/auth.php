@@ -20,9 +20,11 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'show'])->name('register');
     // Throttled: each submission sends an OTP email, so an unthrottled loop
-    // here is a mail flood aimed at our own sending reputation.
+    // here is a mail flood aimed at our own sending reputation. Named rather
+    // than a bare rate, because the limit is two limits -- one on the address
+    // typed and a looser one on the IP. See AppServiceProvider.
     Route::post('/register', [RegisterController::class, 'store'])
-        ->middleware('throttle:5,60');
+        ->middleware('throttle:signup');
 
     Route::get('/login', [LoginController::class, 'show'])->name('login');
     Route::post('/login', [LoginController::class, 'store']);
