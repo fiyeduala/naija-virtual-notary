@@ -6,6 +6,7 @@ use App\Enums\ApplicationStage;
 use App\Enums\RecruitmentRole;
 use App\Exceptions\StageTransitionException;
 use App\Filament\Resources\JobApplicationResource\Pages;
+use App\Jobs\InviteSelectionToAssessment;
 use App\Models\JobApplication;
 use App\Models\User;
 use App\Models\Vacancy;
@@ -353,8 +354,7 @@ class JobApplicationResource extends Resource
                 ->color('primary')
                 ->visible(fn () => RecruitmentPermission::check(RecruitmentPermission::MOVE_STAGE))
                 ->modalHeading('Send the exercise')
-                ->modalDescription(fn (?Collection $records) => ($records?->count() ?? 0)
-                    . ' selected. Each one gets the exercise attached to their own vacancy, with their own deadline counted from when it actually goes out. Anyone whose vacancy has no exercise set, or who is past this point already, is named and left alone.')
+                ->modalDescription(fn (?Collection $records) => static::invitePreview($records))
                 ->form([
                     Forms\Components\Radio::make('delay_working_days')
                         ->label('When should it go out?')
@@ -386,6 +386,27 @@ class JobApplicationResource extends Resource
                             ? (int) $data['due_working_days']
                             : null,
                     ];
+
+                    // Above a few pages, the work goes to the queue instead of
+                    // finishing in this request. See InviteSelectionToAssessment
+                    // for why: the per-candidate cost is a transaction, and a
+                    // few thousand of them do not fit in one page load.
+                    if (($records?->count() ?? 0) > InviteSelectionToAssessment::THRESHOLD) {
+                        InviteSelectionToAssessment::dispatch(
+                            $records->modelKeys(),
+                            $options,
+                            $actor?->getKey(),
+                        );
+
+                        Notification::make()
+                            ->title(number_format($records->count()) . ' being worked through')
+                            ->body('Too many to do on this screen, so it is running in the background. You can leave this page. '
+                                . 'They are queued at ' . static::hourlyRate() . ', and you will get an alert when the last one is placed.')
+                            ->status('success')
+                            ->send();
+
+                        return;
+                    }
 
                     static::runBatch($records, 'queued for sending', function (JobApplication $application) use ($assessments, $actor, $options) {
                         // Mirrors the single-record action's own condition, so
@@ -488,6 +509,69 @@ class JobApplicationResource extends Resource
                     });
                 }),
         ];
+    }
+
+    /**
+     * What sending the exercise to this selection actually involves.
+     *
+     * The count and the deadline rule were always here. What is new is the
+     * time: an admin pressing this on a filtered page of thirty is doing
+     * something that finishes while they watch, and an admin pressing it on
+     * four thousand is starting something that runs for days. Those are
+     * different decisions, and the second one should not look like the first.
+     *
+     * The estimate is deliberately coarse — the real rate depends on how often
+     * the host's cron fires — so it is given in whole hours or days and
+     * described as "about". An estimate stated to the minute would be a
+     * precision this cannot honour.
+     *
+     * @param  \Illuminate\Support\Collection<int, JobApplication>|null  $records
+     */
+    private static function invitePreview(?Collection $records): string
+    {
+        $count = $records?->count() ?? 0;
+
+        $preview = number_format($count) . ' selected. Each one gets the exercise attached to their own vacancy, '
+            . 'with their own deadline counted from when it actually goes out. Anyone whose vacancy has no exercise '
+            . 'set, or who is past this point already, is named and left alone.';
+
+        $perHour = static::perHour();
+
+        if ($perHour <= 0 || $count <= $perHour) {
+            return $preview;
+        }
+
+        $hours = (int) ceil($count / $perHour);
+
+        $span = $hours < 24
+            ? 'about ' . $hours . ' ' . str('hour')->plural($hours)
+            : 'about ' . ($days = (int) ceil($hours / 24)) . ' ' . str('day')->plural($days);
+
+        $preview .= ' At ' . static::hourlyRate() . ', the last of these reaches somebody in ' . $span
+            . '. The deadline is counted from each person\'s own send, so nobody is shortchanged by waiting —'
+            . ' but if that is longer than you intended, invite a smaller group first.';
+
+        if ($count > InviteSelectionToAssessment::THRESHOLD) {
+            $preview .= ' This is too many to do on this screen, so it runs in the background and alerts you when it is done.';
+        }
+
+        return $preview;
+    }
+
+    /** The configured ceiling on paceable mail, or 0 when there is none. */
+    private static function perHour(): int
+    {
+        return max(0, (int) config('recruitment.outbox.per_hour', 0));
+    }
+
+    /** The sending rate in words, for a screen rather than a config file. */
+    private static function hourlyRate(): string
+    {
+        $perHour = static::perHour();
+
+        return $perHour > 0
+            ? 'up to ' . number_format($perHour) . ' an hour'
+            : 'no configured rate limit';
     }
 
     /**

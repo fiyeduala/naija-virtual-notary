@@ -128,6 +128,38 @@ return [
     ],
 
     /*
+    | The outbox, and how fast it is allowed to send.
+    |
+    | Every candidate email is queued, never sent inline, and this is the
+    | ceiling on how quickly the drain empties that queue. It exists because
+    | throughput and deliverability are different problems: the queue already
+    | guarantees one message per recipient with no blast, but four thousand
+    | invitations pushed out as fast as the server accepts them is still how a
+    | domain with little sending history gets itself greylisted or filtered —
+    | and most shared hosts enforce an hourly relay cap of their own that is
+    | lower than you would guess. Hitting that cap produces bounces from our
+    | own server, which is worse than sending slowly.
+    |
+    | `per_hour` counts only paceable mail. The messages in
+    | RecruitmentTemplates::PRIORITY — a sign-in link, an interview, an offer,
+    | a receipt — are sent regardless and are not counted against it, because a
+    | sign-in link held behind a batch expires before it arrives.
+    |
+    | 0 means no ceiling. The default is deliberately low enough to be safe on
+    | a subdomain that has not sent at volume before. Raise it once the domain
+    | has a reputation and once you know the host's own cap, not before.
+    |
+    | The second window is what makes the sending even rather than a burst at
+    | the top of each hour. It is derived, not configured: the hourly figure
+    | divided across twelve runs, twelve being an hour of the slowest cron
+    | this kind of host allows. The effect is that the pace comes out the same
+    | whether `schedule:run` fires every minute or every five.
+    */
+    'outbox' => [
+        'per_hour' => (int) env('NVN_RECRUITMENT_PER_HOUR', 100),
+    ],
+
+    /*
     | Candidate access.
     |
     | Passwordless. A candidate is not a customer and must not be made to

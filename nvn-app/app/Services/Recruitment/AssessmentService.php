@@ -77,6 +77,26 @@ class AssessmentService
         $dueDays = max(1, min($dueDays, 30));
 
         return DB::transaction(function () use ($application, $actor, $template, $delay, $dueDays, $options) {
+            // Applied cannot reach the assessment stage in one move — the only
+            // thing that follows Applied is InitialReview — so somebody still
+            // sitting in the pile is walked through it here rather than being
+            // refused with a state-machine error. Sending an exercise *is* an
+            // act of initial review: nobody selects a candidate for one
+            // without having looked at them, and the alternative is an admin
+            // pressing "mark as being reviewed" purely to satisfy the graph.
+            //
+            // Walked rather than skipped, so the history still shows the
+            // pipeline being followed one stage at a time and the review is
+            // recorded as having happened, which is the true account of it.
+            if ($application->stage === ApplicationStage::Applied) {
+                $this->stages->move($application, ApplicationStage::InitialReview, $actor, [
+                    'skip_permission' => true,
+                    'metadata'        => ['reason' => 'Reviewed by being selected for the exercise.'],
+                ]);
+
+                $application->refresh();
+            }
+
             // Anything still open is replaced rather than left beside the new
             // one: two live assignments would give the candidate two deadlines.
             foreach ($application->assignments()->open()->get() as $existing) {

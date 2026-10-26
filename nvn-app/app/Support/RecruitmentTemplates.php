@@ -39,6 +39,53 @@ class RecruitmentTemplates
     public const WITHDRAWN        = 'withdrawal_confirmed';
     public const SIGN_IN          = 'sign_in_link';
 
+
+    /**
+     * The messages a rate limit is not allowed to delay.
+     *
+     * The outbox can be paced, because sending four thousand invitations as
+     * fast as the mail server will take them is how a young domain gets itself
+     * filtered. But pacing is only safe for mail nobody is sitting waiting for,
+     * and these are the ones somebody is:
+     *
+     *   - SIGN_IN expires in thirty minutes and the candidate is on the page
+     *     that asked for it. Held behind a batch it arrives dead, and the
+     *     portal looks broken to everybody who tries to use it that hour.
+     *   - INTERVIEW_SENT and INTERVIEW_MOVED carry a date and a time. A
+     *     rescheduled interview that arrives after the old slot is worse than
+     *     no email at all.
+     *   - OFFER_SENT is an offer. It does not queue behind anything.
+     *   - ASSESSMENT_GOT and WITHDRAWN are receipts for something the person
+     *     just did, where silence reads as a failure.
+     *
+     * Everything else is paceable, and the invitation is pacefully so by
+     * design: its deadline is counted from the moment it is actually
+     * dispatched, not from when an admin pressed the button, so a slower send
+     * moves the deadline with it rather than eating into the candidate's time.
+     * The reminder is safe for the same reason in reverse — if pacing pushed
+     * one past its deadline, dispatchDue() cancels it instead of sending a
+     * nudge about work that can no longer be submitted.
+     *
+     * These are low-volume by nature: they are sent to individuals at the
+     * point of a decision, so exempting them costs nothing against the cap.
+     *
+     * @var list<string>
+     */
+    public const PRIORITY = [
+        self::SIGN_IN,
+        self::INTERVIEW_SENT,
+        self::INTERVIEW_MOVED,
+        self::OFFER_SENT,
+        self::ASSESSMENT_GOT,
+        self::WITHDRAWN,
+    ];
+
+    /** Whether this template jumps the rate limit. A null key does not. */
+    public static function isPriority(?string $key): bool
+    {
+        return $key !== null && in_array($key, self::PRIORITY, true);
+    }
+
     /** @var array<string, string> */
     public const KEYS = [
         self::ACKNOWLEDGEMENT  => 'Application received',

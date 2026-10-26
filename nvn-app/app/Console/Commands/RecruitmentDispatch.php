@@ -25,6 +25,12 @@ use Illuminate\Console\Command;
  * a wall-clock budget. Overlap is prevented by withoutOverlapping() on the
  * schedule and by a row-level lock inside dispatchDue(), so two runs cannot
  * both send the same email even if the first has not finished.
+ *
+ * --limit is a wall-clock bound, not the sending rate. The rate is
+ * `recruitment.outbox.per_hour`, enforced inside dispatchDue() across a rolling
+ * hour, so it holds however often this command happens to run. A run that
+ * sends nothing because the hour's allowance is spent is the rate limit
+ * working, and says so rather than looking idle.
  */
 class RecruitmentDispatch extends Command
 {
@@ -41,7 +47,8 @@ class RecruitmentDispatch extends Command
             return self::SUCCESS;
         }
 
-        $tally = $outbox->dispatchDue(max(1, (int) $this->option('limit')));
+        $allowance = $outbox->allowance();
+        $tally     = $outbox->dispatchDue(max(1, (int) $this->option('limit')));
 
         // Cancelled is not a failure. It is the module declining to email
         // somebody about a stage they are no longer at, which is the whole
@@ -52,6 +59,13 @@ class RecruitmentDispatch extends Command
             $tally['failed'],
             $tally['cancelled'],
         ));
+
+        // Said plainly, because "sent 0" with a queue full of pending mail is
+        // otherwise indistinguishable from a broken worker, and that is the
+        // thing somebody reads this log to rule out.
+        if ($allowance <= 0) {
+            $this->line('Paced: the rate limit was already spent, so only priority mail could go.');
+        }
 
         return self::SUCCESS;
     }

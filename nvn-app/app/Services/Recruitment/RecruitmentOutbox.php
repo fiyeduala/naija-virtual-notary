@@ -11,6 +11,8 @@ use App\Support\AuditLogger;
 use App\Support\EmailNormalizer;
 use App\Support\RecruitmentTemplates;
 use App\Support\WorkingCalendar;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -97,7 +99,7 @@ class RecruitmentOutbox
     {
         $tally = ['sent' => 0, 'failed' => 0, 'cancelled' => 0];
 
-        $ids = RecruitmentMessage::query()->due()->orderBy('id')->limit($limit)->pluck('id');
+        $ids = $this->dueIds($limit);
 
         foreach ($ids as $id) {
             // One row at a time, claimed under a lock, so two overlapping cron
@@ -134,6 +136,98 @@ class RecruitmentOutbox
         }
 
         return $tally;
+    }
+
+    /**
+     * Which messages this run is allowed to send, in the order it may send them.
+     *
+     * Priority mail first and without a ceiling, then whatever room the rate
+     * limit leaves. The two are separate queries rather than one ordered query
+     * because they are limited by different things: priority is bounded only by
+     * the run's wall-clock budget, paceable mail by the budget *and* the cap.
+     *
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    private function dueIds(int $limit): Collection
+    {
+        $priority = RecruitmentMessage::query()
+            ->due()
+            ->whereIn('template_key', RecruitmentTemplates::PRIORITY)
+            ->orderBy('id')
+            ->limit($limit)
+            ->pluck('id');
+
+        $room = min($limit - $priority->count(), $this->allowance());
+
+        if ($room <= 0) {
+            return $priority;
+        }
+
+        return $priority->concat(
+            RecruitmentMessage::query()
+                ->due()
+                ->where(fn (Builder $q) => $q
+                    ->whereNull('template_key')
+                    ->orWhereNotIn('template_key', RecruitmentTemplates::PRIORITY))
+                ->orderBy('id')
+                ->limit($room)
+                ->pluck('id'),
+        );
+    }
+
+    /**
+     * How many paceable messages may still go out right now.
+     *
+     * Two rolling windows, both derived from one configured number. The hour
+     * is the ceiling that protects the domain and stays under the host's own
+     * relay cap. The five minutes is what stops the hour's whole allowance
+     * leaving in the first ninety seconds and then nothing for the rest of the
+     * hour — which would be within the cap and still look exactly like a blast
+     * to a receiving mail server.
+     *
+     * Counted from `sent_at`, so a cancelled or failed message does not spend
+     * the allowance: nothing left the building, and a cancellation is the
+     * module declining to write to somebody rather than writing to them.
+     *
+     * PHP_INT_MAX rather than a null when uncapped, so the caller can treat
+     * this as a number in a min() without a branch.
+     */
+    public function allowance(): int
+    {
+        $perHour = (int) config('recruitment.outbox.per_hour', 0);
+
+        if ($perHour <= 0) {
+            return PHP_INT_MAX;
+        }
+
+        // Twelve runs to the hour is the slowest cron this host allows. Taking
+        // the floor at one keeps a very low cap sending at all rather than
+        // rounding itself down to a standstill.
+        $perWindow = max(1, (int) ceil($perHour / 12));
+
+        // Four and a half minutes, not five, and the half minute is the whole
+        // point. A cron that fires exactly every five minutes would otherwise
+        // look back across a boundary its own previous run is sitting on, count
+        // those sends against this window, and send nothing — halving the rate
+        // on precisely the schedule this host runs. The margin keeps the window
+        // clear for a five-minute cron while still pacing a per-minute one to
+        // twelve windows an hour.
+        return min(
+            $perHour - $this->sentSince(now()->subHour()),
+            $perWindow - $this->sentSince(now()->subSeconds(270)),
+        );
+    }
+
+    /** Paceable mail actually sent since a moment. Priority mail is not counted. */
+    private function sentSince(\Carbon\CarbonInterface $since): int
+    {
+        return RecruitmentMessage::query()
+            ->where('status', RecruitmentMessage::SENT)
+            ->where('sent_at', '>=', $since)
+            ->where(fn (Builder $q) => $q
+                ->whereNull('template_key')
+                ->orWhereNotIn('template_key', RecruitmentTemplates::PRIORITY))
+            ->count();
     }
 
     /** Hand one message to the mail server. */
