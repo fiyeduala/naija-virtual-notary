@@ -92,6 +92,12 @@ class AssessmentFollowUp extends Command
             }
         }
 
+        // Invited and overdue, but deliberately not reopened: scopeOpen()
+        // counts that third one as live, and it is not this cohort. Reopening
+        // follows a submission a reviewer chose to hand back, with a deadline
+        // they set on purpose and a reason attached — overwriting it with a
+        // blanket date and an apology for an email they received perfectly
+        // well would undo somebody's decision and tell them an untrue story.
         $assignments = AssessmentAssignment::query()
             ->whereIn('status', [AssessmentAssignment::INVITED, AssessmentAssignment::OVERDUE])
             ->whereNull('cancelled_at')
