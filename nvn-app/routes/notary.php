@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\NotaryAssetViewController;
 use App\Http\Controllers\Admin\NotaryReviewController;
 use App\Http\Controllers\Admin\RequestDocumentController;
 use App\Http\Controllers\Notary\NotaryApplicationController;
+use App\Http\Controllers\Notary\NotaryGuideController;
 use App\Http\Controllers\Notary\NotaryProfileController;
 use App\Http\Controllers\Notary\OffsiteNotarizationController;
 use App\Http\Controllers\Notary\OnboardingFeeController;
@@ -51,6 +52,14 @@ Route::middleware(['auth', 'verified.otp', 'role:notary'])->group(function () {
     // Named golive still, because the name is what every blade and redirect
     // holds; what it does behind that name is now ask, not do.
     Route::post('/notary/profile/go-live', [NotaryProfileController::class, 'requestListing'])->name('notary.profile.golive');
+});
+
+// How the job is done, in screenshots of this software doing it. Open to the
+// admin as well as to partners: whoever is at the desk works the same screens,
+// and an admin answering "how do I place the client's signature" should be
+// reading the same page they would send a partner to.
+Route::middleware(['auth', 'verified.otp', 'role:notary,admin'])->group(function () {
+    Route::get('/notary/guide', [NotaryGuideController::class, 'index'])->name('notary.guide');
 });
 
 // Offsite notarization — a job the notary took on themselves, brought here only

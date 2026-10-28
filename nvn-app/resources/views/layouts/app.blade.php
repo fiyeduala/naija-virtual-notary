@@ -355,6 +355,7 @@
             <a href="{{ route('notary.dashboard') }}"         class="nav-link {{ request()->routeIs('notary.dashboard')      ? 'active' : '' }}">Dashboard</a>
             <a href="{{ route('notary.requests.incoming') }}"  class="nav-link {{ request()->routeIs('notary.requests.*')     ? 'active' : '' }}">Requests</a>
             <a href="{{ route('notary.profile.edit') }}"       class="nav-link {{ request()->routeIs('notary.profile.*')      ? 'active' : '' }}">My Profile</a>
+            <a href="{{ route('notary.guide') }}"              class="nav-link {{ request()->routeIs('notary.guide')         ? 'active' : '' }}">Guide</a>
         @elseif($navUser->isClient())
             <a href="{{ route('client.dashboard') }}"          class="nav-link {{ request()->routeIs('client.dashboard')      ? 'active' : '' }}">Dashboard</a>
             <a href="{{ route('client.request.create') }}"     class="nav-link {{ request()->routeIs('client.request.*')      ? 'active' : '' }}">New Request</a>

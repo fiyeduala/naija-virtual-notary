@@ -825,6 +825,16 @@
                 </div>
             </a>
             @endif
+            {{-- Last in the row rather than first: a notary who has arrived here
+                 with a job waiting wants the job, and the walkthrough is what
+                 they come back for on the quiet afternoon. --}}
+            <a href="{{ route('notary.guide') }}" class="quick-card">
+                <div class="quick-icon"><x-heroicon-o-academic-cap style="width:22px;height:22px;"/></div>
+                <div>
+                    <div class="quick-title">How This Works</div>
+                    <div class="quick-sub">Every screen you will use, in pictures — setting up, running a session, sealing and getting paid</div>
+                </div>
+            </a>
         </div>
 
     </div>
