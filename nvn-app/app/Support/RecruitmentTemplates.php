@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Models\PlatformSetting;
 
 /**
- * The ten emails a candidate can receive, in one editable place.
+ * The eleven emails a candidate can receive, in one editable place.
  *
  * Each template is a subject line and a body of plain-text paragraphs. Plain
  * text rather than HTML on purpose: these are editable by an administrator, and
@@ -37,6 +37,7 @@ class RecruitmentTemplates
     public const CHECKS_SENT      = 'checks_requested';
     public const REJECTED         = 'application_rejected';
     public const WITHDRAWN        = 'withdrawal_confirmed';
+    public const ASSESSMENT_RETRY = 'assessment_retry';
     public const SIGN_IN          = 'sign_in_link';
 
 
@@ -98,6 +99,7 @@ class RecruitmentTemplates
         self::CHECKS_SENT      => 'Pre-employment checks',
         self::REJECTED         => 'Application unsuccessful',
         self::WITHDRAWN        => 'Withdrawal confirmed',
+        self::ASSESSMENT_RETRY => 'Assessment retry',
         self::SIGN_IN          => 'Sign-in link',
     ];
 
@@ -172,6 +174,25 @@ class RecruitmentTemplates
                     This is a reminder that the exercise for your {{ role }} application is due {{ deadline }}.
 
                     If you have already submitted it, please ignore this — you do not need to do anything else.
+
+                    Reference: {{ reference }}
+                    TXT,
+            ],
+            self::ASSESSMENT_RETRY => [
+                'subject' => 'Your {{ role }} exercise — we have fixed the link and moved the deadline',
+                'action'  => 'Sign in and start',
+                'body'    => <<<'TXT'
+                    Hello {{ first_name }},
+
+                    We are sorry. We invited you to a short exercise for the {{ role }} role, but our email reached you late and the sign-in link inside it had expired before it arrived. That was a fault at our end, and nothing to do with anything you did.
+
+                    It is working now, and we have put more time on the clock. Your new deadline is {{ deadline }}.
+
+                    Use the button below to sign in and start. If you still have our earlier email, the link in it works again too.
+
+                    The exercise takes {{ effort }}, and you can save a draft and come back to it.
+
+                    If you have already submitted it, there is nothing for you to do.
 
                     Reference: {{ reference }}
                     TXT,

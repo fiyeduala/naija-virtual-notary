@@ -218,9 +218,21 @@ class AssessmentService
     /**
      * Give a candidate more time. Always recorded, always visible.
      *
+     *  counts working days from the current deadline, or from today when
+     * that deadline has already slipped. Pass  instead to put every
+     * assignment on one named date — which is what a bulk correction wants:
+     * "five working days each" scatters a cohort across a week and leaves the
+     * office with five different answers to the same question.
+     *
      * @throws StageTransitionException
      */
-    public function extend(AssessmentAssignment $assignment, ?User $actor, int $days, string $reason): AssessmentAssignment
+    public function extend(
+        AssessmentAssignment $assignment,
+        ?User $actor,
+        int $days,
+        string $reason,
+        ?CarbonImmutable $on = null,
+    ): AssessmentAssignment
     {
         if (! RecruitmentPermission::allows($actor, RecruitmentPermission::MOVE_STAGE)) {
             throw new StageTransitionException('You do not have permission to change a deadline.');
@@ -233,7 +245,11 @@ class AssessmentService
             throw new StageTransitionException('This assessment has already been submitted.');
         }
 
-        return DB::transaction(function () use ($assignment, $actor, $days, $reason) {
+        if ($on && $on->isPast()) {
+            throw new StageTransitionException('That deadline has already passed.');
+        }
+
+        return DB::transaction(function () use ($assignment, $actor, $days, $reason, $on) {
             $assignment = $this->locked($assignment);
 
             $from = CarbonImmutable::parse($assignment->due_at ?? now());
@@ -241,7 +257,7 @@ class AssessmentService
             // so an extension always lands in the future.
             $base = $from->isPast() ? CarbonImmutable::now() : $from;
 
-            $newDue = WorkingCalendar::addWorkingDays(
+            $newDue = $on ?? WorkingCalendar::addWorkingDays(
                 $base,
                 $days,
                 (string) config('recruitment.assessment.due_at_time', '17:00'),
@@ -268,8 +284,9 @@ class AssessmentService
 
             AuditLogger::record('recruitment_assessment.extended', 'assessment_assignment', $assignment->id, [
                 'application' => $assignment->application->reference,
-                'days'        => $days,
+                'days'        => $on ? null : $days,
                 'due_at'      => $newDue->toIso8601String(),
+                'fixed_date'  => $on !== null,
                 'reason'      => Str::limit($reason, 160),
             ], $actor?->id);
 
