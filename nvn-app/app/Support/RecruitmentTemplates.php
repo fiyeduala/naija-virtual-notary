@@ -180,7 +180,7 @@ class RecruitmentTemplates
             ],
             self::ASSESSMENT_RETRY => [
                 'subject' => 'Your {{ role }} exercise — we have fixed the link and moved the deadline',
-                'action'  => 'Sign in and start',
+                'action'  => 'Ask for a sign-in link',
                 'body'    => <<<'TXT'
                     Hello {{ first_name }},
 
@@ -188,7 +188,7 @@ class RecruitmentTemplates
 
                     It is working now, and we have put more time on the clock. Your new deadline is {{ deadline }}.
 
-                    Use the button below to sign in and start. If you still have our earlier email, the link in it works again too.
+                    Use the button below and ask for a fresh sign-in link; it should reach you within a few minutes. The link in our earlier email has expired and will not work — asking again is the only way to get in.
 
                     The exercise takes {{ effort }}, and you can save a draft and come back to it.
 
