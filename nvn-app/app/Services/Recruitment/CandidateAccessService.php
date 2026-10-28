@@ -74,7 +74,8 @@ class CandidateAccessService
             'action_url' => route('candidate.login.confirm', ['token' => $plain]),
             'data'       => ['company' => 'Naija Virtual Notary'],
             'footnote'   => 'This link expires in ' . self::lifetimeInWords()
-                . ' and can only be used once.',
+                . ' and can only be used once. If you asked for a link more than once, '
+                . 'this is the one that works -- any earlier link has already stopped working.',
         ]);
     }
 

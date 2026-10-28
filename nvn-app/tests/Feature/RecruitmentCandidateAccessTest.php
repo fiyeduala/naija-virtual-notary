@@ -269,6 +269,39 @@ class RecruitmentCandidateAccessTest extends TestCase
     }
 
     /** Sign a candidate in the way the redemption route does. */
+    public function test_a_candidate_at_work_is_not_signed_out_at_the_end_of_the_window(): void
+    {
+        config(['recruitment.candidate_access.session_minutes' => 120]);
+
+        $application = $this->makeApplication($this->makePublishedVacancy(['slug' => 'still-typing']));
+
+        $this->signInAs($application->candidate);
+
+        // Three hours of steady work against a two-hour window. Measured from
+        // the moment of signing in this is a logout in the middle of a written
+        // exercise; measured from the last thing they did it is an ordinary
+        // afternoon, which is the only one of the two anybody could explain.
+        foreach ([90, 90] as $minutes) {
+            $this->travel($minutes)->minutes();
+            $this->get(route('candidate.home'))->assertOk();
+        }
+    }
+
+    public function test_a_candidate_who_walks_away_is_still_signed_out(): void
+    {
+        config(['recruitment.candidate_access.session_minutes' => 120]);
+
+        $application = $this->makeApplication($this->makePublishedVacancy(['slug' => 'walked-off']));
+
+        $this->signInAs($application->candidate);
+
+        // The borrowed-laptop case, which is the reason the window exists and
+        // the thing a sliding window must not quietly give away.
+        $this->travel(121)->minutes();
+
+        $this->get(route('candidate.home'))->assertRedirect(route('candidate.login'));
+    }
+
     private function signInAs(\App\Models\Candidate $candidate): void
     {
         [$plain] = app(CandidateAccessService::class)->issue($candidate);

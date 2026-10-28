@@ -128,6 +128,7 @@ class AuthController extends Controller
     private function sentMessage(): string
     {
         return 'If that address has an application with us, a sign-in link is on its way. '
-            . 'It can take a minute to arrive, and the link works once and then expires.';
+            . 'It can take a few minutes to arrive, so look in your spam folder before asking again. '
+            . 'If you ask more than once, only the newest email will work.';
     }
 }
