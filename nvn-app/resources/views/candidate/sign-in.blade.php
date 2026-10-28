@@ -34,7 +34,7 @@
 
 <p class="meta">
     The link works once and then expires after
-    {{ (int) config('recruitment.candidate_access.token_minutes', 30) }} minutes. If it has run out,
+    {{ \App\Services\Recruitment\CandidateAccessService::lifetimeInWords() }}. If it has run out,
     just ask for another one. If you have not applied for anything yet, you can
     <a href="{{ route('careers.index') }}">see what is open</a>.
 </p>

@@ -73,10 +73,49 @@ class CandidateAccessService
         $this->outbox->queueToCandidate(RecruitmentTemplates::SIGN_IN, $candidate, [
             'action_url' => route('candidate.login.confirm', ['token' => $plain]),
             'data'       => ['company' => 'Naija Virtual Notary'],
-            'footnote'   => 'This link expires in '
-                . (int) config('recruitment.candidate_access.token_minutes', 30)
-                . ' minutes and can only be used once.',
+            'footnote'   => 'This link expires in ' . self::lifetimeInWords()
+                . ' and can only be used once.',
         ]);
+    }
+
+    /**
+     * How long a freshly minted link lives, in minutes.
+     *
+     * One definition, read by the minting and by both places that tell a
+     * candidate the number, so a change to the setting cannot leave a screen
+     * quoting the old one.
+     */
+    public static function lifetimeMinutes(): int
+    {
+        return max(5, (int) config('recruitment.candidate_access.token_minutes', 30));
+    }
+
+    /**
+     * The same span in words, for a sentence rather than a config file.
+     *
+     * The setting is in minutes because that is the unit the token is minted
+     * in, but "expires in 4320 minutes" is not a thing to say to somebody. Only
+     * exact multiples are folded up: 90 minutes stays 90 minutes rather than
+     * becoming an "about an hour and a half" that is less precise than the
+     * truth.
+     */
+    public static function lifetimeInWords(?int $minutes = null): string
+    {
+        $minutes ??= self::lifetimeMinutes();
+
+        if ($minutes % 1440 === 0) {
+            $days = intdiv($minutes, 1440);
+
+            return $days . ' ' . str('day')->plural($days);
+        }
+
+        if ($minutes % 60 === 0) {
+            $hours = intdiv($minutes, 60);
+
+            return $hours . ' ' . str('hour')->plural($hours);
+        }
+
+        return $minutes . ' ' . str('minute')->plural($minutes);
     }
 
     /**
@@ -90,7 +129,7 @@ class CandidateAccessService
         // 64 characters of the URL-safe alphabet: far beyond guessing, and
         // short enough that no mail client wraps it.
         $plain   = Str::random(64);
-        $minutes = max(5, (int) config('recruitment.candidate_access.token_minutes', 30));
+        $minutes = self::lifetimeMinutes();
 
         // Only one live link at a time. A candidate who presses the button
         // twice uses the newer email; the older link stops working, which is
