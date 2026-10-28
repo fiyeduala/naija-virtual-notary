@@ -56,7 +56,12 @@ Schedule::command('nvn:asset-reminders')
 // because the per-minute `queue:work` above is the pattern the host already
 // tolerates. Bounded by --limit, and overlap-protected both here and by a
 // row-level lock inside dispatchDue().
-Schedule::command('nvn:recruitment-dispatch')
+//
+// The limit is configured rather than left at the command's default because
+// it is a ceiling on the hour as much as on the run: at a five-minute cron
+// floor, twenty-five a run is three hundred an hour whatever the rate limit
+// says, and a backlog that has to clear by a deadline needs both raised.
+Schedule::command('nvn:recruitment-dispatch --limit=' . config('recruitment.outbox.per_run', 25))
     ->everyMinute()
     ->withoutOverlapping(10);
 

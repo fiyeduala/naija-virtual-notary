@@ -338,4 +338,26 @@ class RecruitmentSendRateTest extends TestCase
             $application->fresh()->stage,
         );
     }
+
+    public function test_the_outbox_drain_runs_with_a_configured_limit(): void
+    {
+        $this->artisan('schedule:list');
+
+        $drain = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+            ->map(fn ($event) => (string) $event->command)
+            ->first(fn (string $command) => str_contains($command, 'nvn:recruitment-dispatch'));
+
+        $this->assertNotNull($drain);
+
+        // On a host whose cron will not fire more often than every five
+        // minutes, the per-run bound is the hour's real ceiling: the rate
+        // limit cannot hand out more than twelve runs can carry. Left at the
+        // command's own default it is invisible, and a backlog that has to
+        // clear by a named date silently takes four times as long as the
+        // configured rate promises.
+        $this->assertStringContainsString(
+            '--limit=' . config('recruitment.outbox.per_run'),
+            $drain,
+        );
+    }
 }

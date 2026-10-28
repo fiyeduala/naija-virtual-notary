@@ -154,9 +154,17 @@ return [
     | divided across twelve runs, twelve being an hour of the slowest cron
     | this kind of host allows. The effect is that the pace comes out the same
     | whether `schedule:run` fires every minute or every five.
+    |
+    | `per_run` is the other half of the same number, and on a host whose cron
+    | will not fire more often than every five minutes it is the one that
+    | actually binds. A run attempts at most this many messages, so the real
+    | ceiling is `per_run` x however often the cron fires — twelve times an
+    | hour at that floor. Raising `per_hour` past that does nothing on its own.
+    | Keep the two in step: `per_run` wants to be at least `per_hour` / 12.
     */
     'outbox' => [
         'per_hour' => (int) env('NVN_RECRUITMENT_PER_HOUR', 100),
+        'per_run'  => (int) env('NVN_RECRUITMENT_PER_RUN', 25),
     ],
 
     /*
