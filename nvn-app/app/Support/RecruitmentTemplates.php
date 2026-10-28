@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Models\PlatformSetting;
 
 /**
- * The eleven emails a candidate can receive, in one editable place.
+ * The thirteen emails a candidate can receive, in one editable place.
  *
  * Each template is a subject line and a body of plain-text paragraphs. Plain
  * text rather than HTML on purpose: these are editable by an administrator, and
@@ -38,6 +38,7 @@ class RecruitmentTemplates
     public const REJECTED         = 'application_rejected';
     public const WITHDRAWN        = 'withdrawal_confirmed';
     public const ASSESSMENT_RETRY = 'assessment_retry';
+    public const ASSESSMENT_FIX   = 'assessment_correction';
     public const SIGN_IN          = 'sign_in_link';
 
 
@@ -100,6 +101,7 @@ class RecruitmentTemplates
         self::REJECTED         => 'Application unsuccessful',
         self::WITHDRAWN        => 'Withdrawal confirmed',
         self::ASSESSMENT_RETRY => 'Assessment retry',
+        self::ASSESSMENT_FIX   => 'Assessment link correction',
         self::SIGN_IN          => 'Sign-in link',
     ];
 
@@ -193,6 +195,21 @@ class RecruitmentTemplates
                     The exercise takes {{ effort }}, and you can save a draft and come back to it.
 
                     If you have already submitted it, there is nothing for you to do.
+
+                    Reference: {{ reference }}
+                    TXT,
+            ],
+            self::ASSESSMENT_FIX => [
+                'subject' => 'Correction: the older link for your {{ role }} exercise has expired',
+                'action'  => 'Ask for a sign-in link',
+                'body'    => <<<'TXT'
+                    Hello {{ first_name }},
+
+                    A correction to our last email about the {{ role }} exercise. It said the link in our earlier message would work again. It will not — that link expired and cannot be brought back.
+
+                    Use the button below to ask for a fresh sign-in link. It reaches you in a few minutes, and it is the only way in.
+
+                    Your deadline has not changed: {{ deadline }}.
 
                     Reference: {{ reference }}
                     TXT,
