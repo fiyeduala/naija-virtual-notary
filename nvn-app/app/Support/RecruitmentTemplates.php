@@ -173,9 +173,15 @@ class RecruitmentTemplates
                 'body'    => <<<'TXT'
                     Hello {{ first_name }},
 
-                    This is a reminder that the exercise for your {{ role }} application is due {{ deadline }}.
+                    This is a reminder that the exercise for your {{ role }} application is due {{ deadline }}. If you have already submitted it, please ignore this — you do not need to do anything else.
 
-                    If you have already submitted it, please ignore this — you do not need to do anything else.
+                    The button below is the same address every time and it does not expire, so you can keep this email and use it whenever you come back to the exercise. If you are still signed in on the device you started on, it opens your exercise straight away.
+
+                    Please do not sign out. Signing in again means asking us for a fresh link, and that link expires a short while after it is sent — our email can take a few minutes to reach you, so a link you leave for later may be dead by the time you open it. Staying signed in means you never have to ask.
+
+                    Try not to close the tab either, and when you do, press "Save and come back later" first. Nothing is kept as you type — that button is what saves it — and a page left alone for a couple of hours signs itself out, which means asking for another link.
+
+                    If you do find yourself signed out, ask for a new link on that page and open it as soon as it arrives. Only the newest link works; asking again stops the earlier one.
 
                     Reference: {{ reference }}
                     TXT,
