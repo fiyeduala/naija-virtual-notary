@@ -300,7 +300,7 @@
                 <div class="ben-ic"><x-heroicon-o-banknotes style="width:23px;height:23px;"/></div>
                 <div>
                     <h3>A share of every job</h3>
-                    <p>You keep {{ $notaryShare }}% of the fee on each notarization you complete. Your share is recorded against your account as each job finishes and paid out to the bank details on your profile — you never raise an invoice for it.</p>
+                    <p>You keep {{ $notaryShare }}% of the fee on each notarization you complete. Your share is calculated automatically as each job finishes and paid out to the bank details on your profile — you never raise an invoice, and you never chase a client for payment.</p>
                 </div>
             </div>
             <div class="ben" data-reveal>
@@ -418,7 +418,7 @@
             <div class="process-card">
                 <div class="process-num">4</div>
                 <h3>Take jobs and get paid</h3>
-                <p>Accept requests, join the verification call, seal the document. Your {{ $notaryShare }}% of each completed job is added to what you are owed and settled to your bank account.</p>
+                <p>Accept requests, join the verification call, seal the document. Your {{ $notaryShare }}% of each completed job is calculated automatically and paid out to your bank account.</p>
             </div>
         </div>
     </div>

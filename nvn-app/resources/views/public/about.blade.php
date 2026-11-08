@@ -170,15 +170,16 @@
             <div class="pillar">
                 <div class="pillar-n">02</div>
                 <h3>Security &amp; Legitimacy</h3>
-                <p>Documents are encrypted in transit and held in access-controlled storage, open only to
-                   you and the notary assigned to your request. Every notary on the platform is licensed
-                   under Nigerian law, and we record a SHA-256 fingerprint of each sealed file.</p>
+                <p>Documents are encrypted in transit and at rest, and stored on a private disk that is
+                   not reachable from the web — open only to you and the notary assigned to your request.
+                   Every notary on the platform is licensed under Nigerian law, and we record a SHA-256
+                   fingerprint of each sealed file.</p>
             </div>
             <div class="pillar">
                 <div class="pillar-n">03</div>
                 <h3>Speed</h3>
-                <p>Most documents are notarized within 24 hours, and many in as little as 30 minutes.
-                   We respect your time without rushing the part that has to be done properly.</p>
+                <p>Most documents are notarized in 30 minutes or less. If the notary you chose is not
+                   available at that moment, it may take up to 24 hours.</p>
             </div>
         </div>
     </div>
@@ -199,7 +200,9 @@
                 <p>
                     We understand the problems Nigerians abroad run into — embassy requirements, property
                     transactions in another country, business paperwork that has to cross a border and
-                    still be accepted at the other end. Those are the documents our notaries handle most.
+                    still be accepted at the other end. Our notarizations are recognized domestically and
+                    internationally, and documents sealed on this platform are in use with institutions
+                    and authorities outside Nigeria.
                 </p>
                 <p style="margin-top:26px;">
                     <a href="{{ route('partner') }}" class="btn btn-outline">Join as a notary</a>
@@ -220,17 +223,17 @@
 <section class="section section-sm" style="background:var(--bg);">
     <div class="container">
         <div class="section-label">By The Numbers</div>
-        <h2 class="section-title" style="margin-bottom:34px;">How the service actually works</h2>
+        <h2 class="section-title" style="margin-bottom:34px;">Where the service stands today</h2>
         <div class="figures" data-reveal>
             <div class="figure">
-                <div class="figure-n">24hr</div>
-                <div class="figure-k">Typical turnaround</div>
-                <div class="figure-d">Most documents come back within a day; many are finished in under an hour.</div>
+                <div class="figure-n">500+</div>
+                <div class="figure-k">Documents notarized</div>
+                <div class="figure-d">Sealed for clients across Nigeria and the diaspora since the platform opened.</div>
             </div>
             <div class="figure">
-                <div class="figure-n">6</div>
-                <div class="figure-k">Document categories</div>
-                <div class="figure-d">Affidavits, property documents, contracts, travel consent letters, academic credentials and immigration documents.</div>
+                <div class="figure-n">30min</div>
+                <div class="figure-k">Typical turnaround</div>
+                <div class="figure-d">Most documents are sealed within half an hour, and up to 24 hours if your chosen notary is unavailable.</div>
             </div>
             <div class="figure">
                 <div class="figure-n">SHA-256</div>
@@ -239,8 +242,10 @@
             </div>
         </div>
         <p class="figures-note">
-            Turnaround describes typical service rather than a guarantee — a document still depends on
-            your notary's availability and on your identity verification being completed.
+            We handle six categories of document — affidavits, property documents, contracts, travel
+            consent letters, academic credentials and immigration documents. Turnaround describes typical
+            service rather than a guarantee: it still depends on your notary's availability and on your
+            identity verification being completed.
         </p>
     </div>
 </section>

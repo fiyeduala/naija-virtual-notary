@@ -297,9 +297,9 @@
 <div class="trust-bar">
     <div class="trust-bar-inner">
         <div class="trust-item"><x-heroicon-o-lock-closed style="width:18px;height:18px;"/> Encrypted uploads</div>
-        <div class="trust-item"><x-heroicon-o-bolt style="width:18px;height:18px;"/> Most documents within 24 hours</div>
+        <div class="trust-item"><x-heroicon-o-bolt style="width:18px;height:18px;"/> Notarized in 30 minutes</div>
         <div class="trust-item"><x-heroicon-o-globe-alt style="width:18px;height:18px;"/> Nigeria + Diaspora</div>
-        <div class="trust-item"><x-heroicon-o-credit-card style="width:18px;height:18px;"/> Secure card &amp; transfer payment</div>
+        <div class="trust-item"><x-heroicon-o-credit-card style="width:18px;height:18px;"/> Pay in Naira or USD</div>
         <div class="trust-item"><x-heroicon-o-academic-cap style="width:18px;height:18px;"/> Licensed notaries</div>
     </div>
 </div>
@@ -337,7 +337,7 @@
                         <span class="why-ico"><x-heroicon-o-shield-check style="width:24px;height:24px;"/></span>
                         <div>
                             <h3>Secure platform</h3>
-                            <p>Documents are encrypted in transit and held in access-controlled storage. Only you and your assigned notary can open them.</p>
+                            <p>Documents are encrypted in transit and at rest, and stored on a private disk that is not reachable from the web. Only you and your assigned notary can open them.</p>
                         </div>
                     </div>
                     <div class="why-row">
@@ -351,7 +351,7 @@
                         <span class="why-ico"><x-heroicon-o-building-office style="width:24px;height:24px;"/></span>
                         <div>
                             <h3>Properly sealed</h3>
-                            <p>Our notaries are licensed under Nigerian law. Every finished document carries the notary's official seal and we record a SHA-256 fingerprint of the sealed file, so the platform holds a tamper-evident record of exactly what was issued.</p>
+                            <p>Our notaries are licensed under Nigerian law, and their notarizations are recognized both in Nigeria and internationally. Every finished document carries the notary's official seal, and we record a SHA-256 fingerprint of the sealed file, so the platform holds a tamper-evident record of exactly what was issued.</p>
                         </div>
                     </div>
                 </div>
@@ -462,7 +462,7 @@
 {{-- ───────── CTA ───────── --}}
 <section class="cta-strip">
     <h2>Ready to get started?</h2>
-    <p>Create your free account and upload your first document in minutes — from anywhere in the world.</p>
+    <p>Join thousands of Nigerians at home and in the diaspora. Create your free account and upload your first document in minutes — from anywhere in the world.</p>
     <div class="cta-actions">
         <a href="{{ route('register') }}" class="btn btn-white btn-lg">Create a free account</a>
         <a href="{{ route('how-it-works') }}" class="btn btn-ghost-light btn-lg">See how it works</a>

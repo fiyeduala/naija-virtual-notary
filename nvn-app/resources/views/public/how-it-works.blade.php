@@ -154,7 +154,7 @@
                 <div class="jnum">1</div>
                 <div class="jbody">
                     <h3>Create your account and upload</h3>
-                    <p>Sign up, then fill in one short form: your details, the document you need notarized, and a valid means of identification. Uploads are encrypted in transit and stored where only you and your notary can reach them. Tell us there what the document is for — it is how the right service and price are applied.</p>
+                    <p>Sign up, then fill in one short form: your details, the document you need notarized, and a valid means of identification. Uploads are encrypted in transit and at rest, and stored on a private disk only you and your notary can reach. Tell us there what the document is for — it is how the right service and price are applied.</p>
                 </div>
                 <div class="jshot">
                     {{-- Illustrative stock photography. See public/images/site/CREDITS.md. --}}
@@ -234,7 +234,7 @@
                     Is online notarization legally valid? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    Every notary on the platform is a licensed notary public operating under Nigerian law, and the document they produce carries their own official seal and signature. We also record a SHA-256 fingerprint of each sealed file, so there is a tamper-evident record of exactly what was issued. Whether a Nigerian notarization is accepted by a particular foreign authority is a question for that authority — some documents additionally need legalisation or an apostille, and we will tell you if we think yours does.
+                    Every notary on the platform is a licensed notary public operating under Nigerian law, and the document they produce carries their own official seal and signature. We also record a SHA-256 fingerprint of each sealed file, so there is a tamper-evident record of exactly what was issued. Our notarizations are recognized both domestically and internationally, and we regularly seal documents for clients living outside Nigeria. Some foreign authorities additionally require legalisation or an apostille on top of the notarization, and we will tell you if we think yours does.
                 </div>
             </div>
             <div class="faq-item">
@@ -258,7 +258,7 @@
                     How long does it take? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    Most documents are notarized within 24 hours, and many are completed in as little as 30 minutes. The clock starts when your payment clears, and the actual time depends on your notary's availability when you book.
+                    Most documents are notarized in 30 minutes or less. If the notary you chose is not available at that moment, it may take up to 24 hours. The clock starts when your payment clears.
                 </div>
             </div>
             <div class="faq-item">
@@ -274,7 +274,7 @@
                     How do I pay? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    You pay once, after choosing your notary, by card or bank transfer. The price is the one shown on that notary's listing for the service you selected, and you see it before you commit. Requests are currently billed in Nigerian Naira.
+                    You pay once, after choosing your notary, by card or bank transfer. The price is the one shown on that notary's listing for the service you selected, and you see it before you commit. You can pay in Nigerian Naira or US Dollars.
                 </div>
             </div>
         </div>
