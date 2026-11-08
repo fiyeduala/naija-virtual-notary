@@ -1,51 +1,105 @@
-﻿@extends('layouts.public', [
+@extends('layouts.public', [
     'title' => 'About Us — Naija Virtual Notary',
     'description' => 'Learn about Naija Virtual Notary — Nigeria\'s online notarization platform serving the country and the diaspora.',
 ])
 
 @push('styles')
 <style>
-    .page-hero {
-        background: linear-gradient(135deg, #0f1a0b 0%, #1a3011 60%, #2a5020 100%);
-        color: #fff; padding: 80px 24px 72px; text-align: center;
+    /*
+    | page-hero and cta-strip now come from layouts/public, so this file styles
+    | only what is specific to About. Pushed styles land after the layout style
+    | block, so anything re-declared here would quietly win — nothing here is.
+    */
+
+    /* ---- Shared split: copy one side, photograph the other ---- */
+    .ab-split {
+        display: grid; grid-template-columns: 1.05fr .95fr; gap: 72px; align-items: center;
     }
-    .page-hero h1 { font-size: clamp(32px, 4vw, 52px); font-weight: 800; color: #fff; margin-bottom: 16px; }
-    .page-hero p { font-size: 18px; color: rgba(255,255,255,.8); max-width: 580px; margin: 0 auto; line-height: 1.6; }
+    .ab-split.is-reversed .ab-copy { order: 2; }
+    .ab-copy p {
+        font-size: 16.5px; color: var(--muted); line-height: 1.78; margin: 0 0 18px;
+    }
+    .ab-copy p:last-child { margin-bottom: 0; }
 
-    .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
-    @media (max-width: 720px) { .about-grid { grid-template-columns: 1fr; gap: 32px; } }
-
-    .about-img-placeholder {
-        background: var(--brand-light); border-radius: 16px; aspect-ratio: 4/3;
-        display: flex; align-items: center; justify-content: center; font-size: 80px;
-        border: 2px solid rgba(84,180,53,.2);
+    /* The photograph sits on an offset lemon slab. isolation keeps the slab
+       above the section's own white ground instead of behind it. */
+    .ab-visual { position: relative; isolation: isolate; }
+    .ab-visual::before {
+        content: ''; position: absolute; z-index: 0;
+        inset: 26px -26px -26px 26px; border-radius: var(--r-xl);
+        background: var(--lemon); opacity: .5;
+    }
+    .ab-visual.is-flipped::before { inset: 26px 26px -26px -26px; }
+    .ab-photo {
+        position: relative; z-index: 1; display: block; width: 100%; height: auto;
+        border-radius: var(--r-xl); box-shadow: var(--shadow-lg);
     }
 
-    .missions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; margin-top: 40px; }
-    .mission-card {
-        background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-        padding: 28px 24px;
+    /* ---- Mission statement ---- */
+    .mission-band { background: var(--lemon-soft); border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+    .mission-quote {
+        max-width: 860px; margin: 0 auto; text-align: center;
+        font-family: var(--display); font-weight: 700;
+        font-size: clamp(22px, 3.1vw, 34px); line-height: 1.34;
+        letter-spacing: -.018em; color: var(--ink);
     }
-    .mission-card .icon { font-size: 28px; margin-bottom: 14px; }
-    .mission-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
-    .mission-card p { font-size: 14px; color: var(--muted); line-height: 1.65; }
-
-    .team-section { background: var(--brand-light); }
-    .team-text { max-width: 640px; }
-    .team-text p { font-size: 16px; color: var(--muted); line-height: 1.75; margin-bottom: 16px; }
-
-    .stats-bar {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px;
-        background: var(--line); border: 1px solid var(--line); border-radius: var(--radius);
-        overflow: hidden; margin-top: 40px;
+    .mission-quote em { font-style: normal; color: var(--brand-dark); }
+    .mission-by {
+        margin-top: 22px; text-align: center; font-size: 13.5px;
+        letter-spacing: .08em; text-transform: uppercase; color: var(--lemon-ink); font-weight: 600;
     }
-    .stat-item { background: var(--surface); padding: 28px 20px; text-align: center; }
-    .stat-num { font-size: 36px; font-weight: 800; color: var(--brand); }
-    .stat-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
-    .cta-strip { background: linear-gradient(135deg, #54B435, #3d8a27); color: #fff; text-align: center; padding: 72px 24px; }
-    .cta-strip h2 { font-size: clamp(24px, 3vw, 38px); font-weight: 700; margin-bottom: 12px; color: #fff; }
-    .cta-strip p { font-size: 16px; color: rgba(255,255,255,.85); margin-bottom: 32px; }
+    /* ---- Three pillars, on the forest ground so they break the white rhythm ---- */
+    .pillars { background: var(--forest); color: #fff; }
+    .pillars .section-title { color: #fff; }
+    .pillars .section-sub   { color: rgba(255,255,255,.66); }
+    .pillars .section-label { color: var(--lemon); }
+    .pillars .section-label::before { background: var(--lemon); }
+    .pillar-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 54px;
+    }
+    .pillar {
+        padding: 34px 34px 8px; border-top: 1px solid rgba(255,255,255,.16);
+    }
+    .pillar + .pillar { border-left: 1px solid rgba(255,255,255,.1); }
+    .pillar-n {
+        font-family: var(--display); font-size: 15px; font-weight: 700;
+        color: var(--lemon); letter-spacing: .1em; margin-bottom: 20px;
+    }
+    .pillar h3 {
+        font-family: var(--display); font-size: 21px; font-weight: 700;
+        color: #fff; margin: 0 0 12px; letter-spacing: -.01em;
+    }
+    .pillar p { font-size: 15px; line-height: 1.75; color: rgba(255,255,255,.68); margin: 0; }
+
+    /* ---- Figures ---- */
+    .figures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+    .figure {
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--r-lg); padding: 30px 28px;
+    }
+    .figure-n {
+        font-family: var(--display); font-weight: 800; letter-spacing: -.03em;
+        font-size: clamp(30px, 3.4vw, 42px); line-height: 1; color: var(--brand-dark);
+    }
+    .figure-k {
+        margin-top: 12px; font-size: 14.5px; font-weight: 600; color: var(--ink);
+    }
+    .figure-d { margin-top: 6px; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+    .figures-note {
+        margin-top: 22px; font-size: 13px; color: var(--muted); line-height: 1.7; max-width: 640px;
+    }
+
+    @media (max-width: 900px) {
+        .ab-split { grid-template-columns: 1fr; gap: 44px; }
+        .ab-split.is-reversed .ab-copy { order: 0; }
+        .ab-visual::before,
+        .ab-visual.is-flipped::before { inset: 18px -14px -18px 14px; }
+        .pillar-grid { grid-template-columns: 1fr; margin-top: 38px; }
+        .pillar + .pillar { border-left: 0; }
+        .pillar { padding: 28px 0 10px; }
+        .figures { grid-template-columns: 1fr; gap: 16px; }
+    }
 </style>
 @endpush
 
@@ -59,77 +113,135 @@
 {{-- Who we are --}}
 <section class="section">
     <div class="container">
-        <div class="about-grid">
-            <div>
+        <div class="ab-split" data-reveal>
+            <div class="ab-copy">
                 <div class="section-label">Who We Are</div>
-                <h2 class="section-title">Nigeria's Online Notarial Platform</h2>
-                <p style="font-size:16px;color:var(--muted);line-height:1.75;margin-bottom:20px;">
-                    Naija Virtual Notary is Nigeria's premier online notarization service, built to serve Nigerians at home and across the diaspora. We specialize in digitizing document authentication — eliminating the friction of physical appointments, long wait times, and geographic limitations.
+                <h2 class="section-title">Nigeria's online notarial platform</h2>
+                <p>
+                    Naija Virtual Notary is an online notarization service built to serve Nigerians at home
+                    and across the diaspora. We digitise document authentication — removing the physical
+                    appointment, the waiting room, and the need to be in the same country as your notary.
                 </p>
-                <p style="font-size:16px;color:var(--muted);line-height:1.75;">
-                    Our platform connects clients with licensed notaries public, legal professionals, and tech experts who validate documents under Nigerian jurisdiction and in compliance with international standards.
+                <p>
+                    The platform connects clients with licensed notaries public who verify identity over a
+                    live video session and apply their own seal under Nigerian law. Nothing is automated
+                    away: a named notary reviews your document and signs it.
                 </p>
             </div>
-            <div class="about-img-placeholder"><x-heroicon-o-building-office style="width:80px;height:80px;display:inline-block;vertical-align:middle;"/></div>
+            <div class="ab-visual">
+                {{-- Stock photography. See public/images/site/CREDITS.md — nobody pictured
+                     anywhere on this site is a Naija Virtual Notary client, notary or member
+                     of staff, and no caption or alt text may suggest otherwise. --}}
+                <img class="ab-photo"
+                     src="{{ asset('images/site/about-team-lagos.webp') }}"
+                     width="1400" height="933" loading="lazy" decoding="async"
+                     alt="Two colleagues in conversation in a Lagos office.">
+            </div>
         </div>
     </div>
 </section>
 
-{{-- Our mission --}}
-<section class="section" style="background:var(--bg);padding-top:0;">
+{{-- Mission statement --}}
+<section class="section section-sm mission-band">
+    <div class="container">
+        <p class="mission-quote" data-reveal>
+            Getting a document notarized should not depend on <em>where you happen to be standing.</em>
+            We exist so that a Nigerian in Abuja and a Nigerian in Atlanta reach the same notary,
+            on the same day, with the same seal at the end of it.
+        </p>
+        <div class="mission-by">Our mission</div>
+    </div>
+</section>
+
+{{-- Three pillars --}}
+<section class="section pillars">
     <div class="container">
         <div class="center">
             <div class="section-label">Our Core Mission</div>
             <h2 class="section-title">Built on three pillars</h2>
         </div>
-        <div class="missions-grid">
-            <div class="mission-card">
-                <div class="icon"><x-heroicon-o-globe-alt style="width:28px;height:28px;display:inline-block;vertical-align:middle;"/></div>
+        <div class="pillar-grid" data-reveal>
+            <div class="pillar">
+                <div class="pillar-n">01</div>
                 <h3>Accessibility</h3>
-                <p>Eliminate physical appointments, waiting periods, and geographic barriers. Whether you're in Lagos or London, notarization is always one click away.</p>
+                <p>No physical appointment, no waiting period, no geographic barrier. Whether you are in
+                   Lagos or London, the same notary is one sign-in away.</p>
             </div>
-            <div class="mission-card">
-                <div class="icon"><x-heroicon-o-shield-check style="width:28px;height:28px;display:inline-block;vertical-align:middle;"/></div>
+            <div class="pillar">
+                <div class="pillar-n">02</div>
                 <h3>Security &amp; Legitimacy</h3>
-                <p>End-to-end encrypted infrastructure with full compliance to Nigerian legal frameworks. Every document we notarize is internationally recognized.</p>
+                <p>Documents are encrypted in transit and held in access-controlled storage, open only to
+                   you and the notary assigned to your request. Every notary on the platform is licensed
+                   under Nigerian law, and we record a SHA-256 fingerprint of each sealed file.</p>
             </div>
-            <div class="mission-card">
-                <div class="icon"><x-heroicon-o-bolt style="width:28px;height:28px;display:inline-block;vertical-align:middle;"/></div>
+            <div class="pillar">
+                <div class="pillar-n">03</div>
                 <h3>Speed</h3>
-                <p>Most documents are notarized within 24 hours. Many in as little as 30 minutes. We respect your time and deliver without compromising quality.</p>
+                <p>Most documents are notarized within 24 hours, and many in as little as 30 minutes.
+                   We respect your time without rushing the part that has to be done properly.</p>
             </div>
         </div>
     </div>
 </section>
 
-{{-- Team section --}}
-<section class="section team-section">
+{{-- Notary network --}}
+<section class="section">
     <div class="container">
-        <div class="about-grid">
-            <div class="team-text">
-                <div class="section-label">Our Team</div>
+        <div class="ab-split is-reversed" data-reveal>
+            <div class="ab-copy">
+                <div class="section-label">Our Notary Network</div>
                 <h2 class="section-title">Licensed professionals you can trust</h2>
-                <p>Every notarization on our platform is handled by licensed notaries public operating under Nigerian law. Our team includes legal professionals and document specialists with years of experience in cross-border document authentication.</p>
-                <p>We understand the unique challenges faced by Nigerians in the diaspora — navigating embassy requirements, property transactions abroad, and international business paperwork. Our notaries are trained for all of it.</p>
+                <p>
+                    Every notarization on the platform is handled by a licensed notary public operating
+                    under Nigerian law. Each one is reviewed and listed by us before a client can book
+                    them, and each one applies their own signature, stamp and seal to your document.
+                </p>
+                <p>
+                    We understand the problems Nigerians abroad run into — embassy requirements, property
+                    transactions in another country, business paperwork that has to cross a border and
+                    still be accepted at the other end. Those are the documents our notaries handle most.
+                </p>
+                <p style="margin-top:26px;">
+                    <a href="{{ route('partner') }}" class="btn btn-outline">Join as a notary</a>
+                </p>
             </div>
-            <div>
-                <div class="stats-bar">
-                    <div class="stat-item">
-                        <div class="stat-num">500+</div>
-                        <div class="stat-label">Documents notarized</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-num">24hr</div>
-                        <div class="stat-label">Average turnaround</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-num">2</div>
-                        <div class="stat-label">Currencies supported</div>
-                    </div>
-                </div>
-                <p style="font-size:13px;color:var(--muted);margin-top:12px;">We support payments in both NGN and USD — because our clients are everywhere.</p>
+            <div class="ab-visual is-flipped">
+                {{-- Illustrative stock photography, not our team. See CREDITS.md. --}}
+                <img class="ab-photo"
+                     src="{{ asset('images/site/step-review-documents.webp') }}"
+                     width="900" height="600" loading="lazy" decoding="async"
+                     alt="A professional reviewing printed documents at a desk.">
             </div>
         </div>
+    </div>
+</section>
+
+{{-- Figures --}}
+<section class="section section-sm" style="background:var(--bg);">
+    <div class="container">
+        <div class="section-label">By The Numbers</div>
+        <h2 class="section-title" style="margin-bottom:34px;">How the service actually works</h2>
+        <div class="figures" data-reveal>
+            <div class="figure">
+                <div class="figure-n">24hr</div>
+                <div class="figure-k">Typical turnaround</div>
+                <div class="figure-d">Most documents come back within a day; many are finished in under an hour.</div>
+            </div>
+            <div class="figure">
+                <div class="figure-n">6</div>
+                <div class="figure-k">Document categories</div>
+                <div class="figure-d">Affidavits, property documents, contracts, travel consent letters, academic credentials and immigration documents.</div>
+            </div>
+            <div class="figure">
+                <div class="figure-n">SHA-256</div>
+                <div class="figure-k">Fingerprint on every seal</div>
+                <div class="figure-d">We record a cryptographic fingerprint of each sealed file, so there is a tamper-evident record of exactly what was issued.</div>
+            </div>
+        </div>
+        <p class="figures-note">
+            Turnaround describes typical service rather than a guarantee — a document still depends on
+            your notary's availability and on your identity verification being completed.
+        </p>
     </div>
 </section>
 
@@ -139,7 +251,7 @@
     <p>Create a free account and notarize your first document today.</p>
     <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
         <a href="{{ route('register') }}" class="btn btn-white btn-lg">Sign Up Free</a>
-        <a href="{{ route('partner') }}" class="btn btn-outline btn-lg" style="color:#fff;border-color:#fff;">Become a Partner</a>
+        <a href="{{ route('partner') }}" class="btn btn-ghost-light btn-lg">Become a Partner</a>
     </div>
 </section>
 

@@ -109,7 +109,7 @@
 
         <div class="head-tags">
             <span class="is-remote">Fully remote</span>
-            @if (filled($vacancy->employment_type))<span>{{ $vacancy->employment_type }}</span>@endif
+            @if (filled($vacancy->employment_type))<span>{{ ucfirst(str_replace('_', ' ', $vacancy->employment_type)) }}</span>@endif
             @if (filled($vacancy->location_eligibility))<span>{{ $vacancy->location_eligibility }}</span>@endif
             @if ($vacancy->salaryLine())<span>{{ $vacancy->salaryLine() }}</span>@endif
         </div>
@@ -209,7 +209,7 @@
 
                     @if (filled($vacancy->employment_type))
                         <dt>Employment type</dt>
-                        <dd>{{ $vacancy->employment_type }}</dd>
+                        <dd>{{ ucfirst(str_replace('_', ' ', $vacancy->employment_type)) }}</dd>
                     @endif
 
                     <dt>Pay</dt>

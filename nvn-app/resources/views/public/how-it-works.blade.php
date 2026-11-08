@@ -1,53 +1,136 @@
-﻿@extends('layouts.public', [
+@extends('layouts.public', [
     'title' => 'How It Works — Naija Virtual Notary',
     'description' => 'Learn how online notarization works. Four simple steps from uploading your document to receiving your notarized PDF.',
 ])
 
 @push('styles')
 <style>
-    .page-hero {
-        background: linear-gradient(135deg, #0f1a0b, #1a3011 60%, #2a5020);
-        color: #fff; padding: 80px 24px 72px; text-align: center;
-    }
-    .page-hero h1 { font-size: clamp(32px, 4vw, 52px); font-weight: 800; color: #fff; margin-bottom: 16px; }
-    .page-hero p { font-size: 18px; color: rgba(255,255,255,.8); max-width: 540px; margin: 0 auto; line-height: 1.6; }
+    /*
+    | page-hero and cta-strip come from layouts/public. Only the journey and the
+    | FAQ are styled here.
+    |
+    | The four steps below follow the real status chain a request moves through
+    | — draft, submitted, paid, accepted, scheduled, in_verification, notarizing,
+    | completed (App\Enums\RequestStatus). The page used to skip payment and
+    | notary selection entirely, which made the journey read as three steps that
+    | happen to you rather than four you take.
+    */
 
-    .steps-list { margin-top: 56px; display: flex; flex-direction: column; gap: 40px; }
-    .step-row {
-        display: grid; grid-template-columns: 80px 1fr; gap: 28px; align-items: start;
-    }
-    .step-badge {
-        width: 80px; height: 80px; background: var(--brand); color: #fff;
-        border-radius: 50%; display: flex; align-items: center; justify-content: center;
-        font-size: 26px; font-weight: 800; flex-shrink: 0;
-    }
-    .step-row:not(:last-child) .step-badge-wrap::after {
-        content: ''; display: block; width: 2px; height: 32px;
-        background: var(--brand-light); border: 1px dashed var(--brand);
-        margin: 8px auto 0;
-    }
-    .step-content { padding-top: 8px; }
-    .step-content h3 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
-    .step-content p { font-size: 15px; color: var(--muted); line-height: 1.7; }
+    .journey { display: flex; flex-direction: column; gap: 0; margin-top: 64px; }
 
-    .faq-section { background: var(--brand-light); }
-    .faq-list { margin-top: 40px; display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-    .faq-item { background: var(--surface); border-bottom: 1px solid var(--line); }
-    .faq-item:last-child { border-bottom: none; }
+    .jstep {
+        display: grid; grid-template-columns: 92px 1fr 1fr; gap: 0 44px;
+        align-items: center; padding: 0 0 72px; position: relative;
+    }
+    .jstep:last-of-type { padding-bottom: 0; }
+
+    /* The rail runs down through the numbers and stops at the last one. */
+    .jstep:not(:last-of-type)::before {
+        content: ''; position: absolute; left: 35px; top: 78px; bottom: -6px;
+        width: 2px; background: repeating-linear-gradient(
+            to bottom, var(--lemon-deep) 0 7px, transparent 7px 15px);
+    }
+
+    .jnum {
+        width: 72px; height: 72px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-family: var(--display); font-size: 25px; font-weight: 800;
+        color: #fff; background: var(--brand);
+        box-shadow: 0 0 0 7px var(--brand-light);
+        align-self: start; position: relative; z-index: 1;
+    }
+
+    .jbody h3 {
+        font-family: var(--display); font-size: clamp(21px, 2.3vw, 26px);
+        font-weight: 700; letter-spacing: -.015em; color: var(--ink); margin: 0 0 12px; text-wrap: balance;
+    }
+    .jbody p { font-size: 15.5px; color: var(--muted); line-height: 1.75; margin: 0; }
+    .jmeta {
+        margin-top: 16px; display: inline-flex; align-items: center; gap: 7px;
+        font-size: 12.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+        color: var(--lemon-ink); background: var(--lemon-soft);
+        border: 1px solid var(--lemon-deep); border-radius: 999px; padding: 6px 13px;
+    }
+
+    .jshot { position: relative; isolation: isolate; }
+    .jshot img {
+        display: block; width: 100%; height: 232px; object-fit: cover;
+        border-radius: var(--r-lg); box-shadow: var(--shadow); position: relative; z-index: 1;
+    }
+    .jshot::before {
+        content: ''; position: absolute; z-index: 0; inset: 18px -18px -18px 18px;
+        border-radius: var(--r-lg); background: var(--lemon); opacity: .45;
+    }
+    /* Even steps put the photograph on the inside, so the eye zig-zags down the
+       rail instead of running along one straight edge of images. */
+    .jstep:nth-child(even) .jbody { grid-column: 3; grid-row: 1; }
+    .jstep:nth-child(even) .jshot { grid-column: 2; grid-row: 1; }
+    .jstep:nth-child(even) .jshot::before { inset: 18px 18px -18px -18px; }
+
+    /* ---- The optional add-on, deliberately not numbered ---- */
+    .addon {
+        display: grid; grid-template-columns: 56px 1fr; gap: 22px; align-items: start;
+        margin-top: 64px; padding: 30px 32px;
+        background: var(--lemon-soft); border: 1px solid var(--lemon-deep);
+        border-radius: var(--r-lg);
+    }
+    .addon-ic {
+        width: 56px; height: 56px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: #fff; color: var(--brand-dark); border: 1px solid var(--lemon-deep);
+    }
+    .addon h3 {
+        font-family: var(--display); font-size: 19px; font-weight: 700;
+        color: var(--ink); margin: 0 0 8px;
+    }
+    .addon p { font-size: 15px; color: var(--ink-soft); line-height: 1.72; margin: 0; }
+
+    /* ---- FAQ ---- */
+    .faq-section { background: var(--bg); }
+    .faq-list {
+        margin-top: 40px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .faq-item {
+        background: var(--surface); border: 1px solid var(--line);
+        border-radius: var(--radius); overflow: hidden; transition: border-color .18s, box-shadow .18s;
+    }
+    .faq-item:has(.faq-q.open) { border-color: var(--lemon-deep); box-shadow: var(--shadow-sm); }
     .faq-q {
-        width: 100%; text-align: left; background: none; border: none; padding: 20px 24px;
-        font-family: var(--font); font-size: 16px; font-weight: 600; color: var(--ink);
+        width: 100%; text-align: left; background: none; border: none; padding: 20px 22px;
+        font-family: var(--display); font-size: 16px; font-weight: 600; color: var(--ink);
         cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+        gap: 18px; line-height: 1.45;
     }
-    .faq-q:hover { background: var(--brand-light); }
-    .faq-q .arrow { font-size: 12px; color: var(--brand); transition: transform .2s; }
+    .faq-q:hover { background: var(--lemon-soft); }
+    .faq-q .arrow {
+        flex-shrink: 0; color: var(--brand-dark); display: inline-flex;
+        transition: transform .22s ease;
+    }
     .faq-q.open .arrow { transform: rotate(180deg); }
-    .faq-a { padding: 0 24px 20px; font-size: 15px; color: var(--muted); line-height: 1.7; display: none; }
+    .faq-a {
+        padding: 0 22px 20px; font-size: 15px; color: var(--muted);
+        line-height: 1.75; display: none;
+    }
     .faq-a.open { display: block; }
 
-    .cta-strip { background: linear-gradient(135deg, #54B435, #3d8a27); color: #fff; text-align: center; padding: 72px 24px; }
-    .cta-strip h2 { font-size: clamp(24px, 3vw, 38px); font-weight: 700; margin-bottom: 12px; color: #fff; }
-    .cta-strip p { font-size: 16px; color: rgba(255,255,255,.85); margin-bottom: 32px; }
+    @media (max-width: 860px) {
+        .jstep {
+            grid-template-columns: 56px 1fr; gap: 0 20px;
+            padding-bottom: 52px;
+        }
+        .jstep:not(:last-of-type)::before { left: 27px; top: 62px; }
+        .jnum { width: 56px; height: 56px; font-size: 20px; box-shadow: 0 0 0 5px var(--brand-light); }
+        /* One column of content beside the rail on phones: body, then photo,
+           for every step — the desktop zig-zag has nowhere to go here. */
+        .jstep:nth-child(even) .jbody,
+        .jstep .jbody { grid-column: 2; grid-row: 1; }
+        .jstep:nth-child(even) .jshot,
+        .jstep .jshot { grid-column: 2; grid-row: 2; margin-top: 22px; }
+        .jshot img { height: 190px; }
+        .jshot::before,
+        .jstep:nth-child(even) .jshot::before { inset: 14px -12px -14px 12px; }
+        .addon { grid-template-columns: 1fr; gap: 16px; padding: 26px 22px; }
+    }
 </style>
 @endpush
 
@@ -59,48 +142,80 @@
 </section>
 
 <section class="section">
-    <div class="container" style="max-width:760px;">
-        <div class="section-label center">The Process</div>
-        <h2 class="section-title center">From upload to notarized — in 4 steps</h2>
-        <div class="steps-list">
-            <div class="step-row">
-                <div class="step-badge-wrap">
-                    <div class="step-badge">1</div>
+    <div class="container" style="max-width:940px;">
+        <div class="center">
+            <div class="section-label">The Process</div>
+            <h2 class="section-title">From upload to sealed, in four steps</h2>
+            <p class="section-sub">Every step happens in your browser. The only thing you need is a device with a camera and a valid means of identification.</p>
+        </div>
+
+        <div class="journey">
+            <div class="jstep" data-reveal>
+                <div class="jnum">1</div>
+                <div class="jbody">
+                    <h3>Create your account and upload</h3>
+                    <p>Sign up, then fill in one short form: your details, the document you need notarized, and a valid means of identification. Uploads are encrypted in transit and stored where only you and your notary can reach them. Tell us there what the document is for — it is how the right service and price are applied.</p>
                 </div>
-                <div class="step-content">
-                    <h3>Upload Your Document</h3>
-                    <p>Submit your file through our secure online portal. We use encrypted uploads to keep your information safe and confidential. Accepted document types include affidavits, contracts, property paperwork, business documents, and more.</p>
-                </div>
-            </div>
-            <div class="step-row">
-                <div class="step-badge-wrap">
-                    <div class="step-badge">2</div>
-                </div>
-                <div class="step-content">
-                    <h3>Verify Your Identity &amp; Meet Online</h3>
-                    <p>Connect via a secure video call with one of our licensed notaries to confirm your identity and witness your signature. There are no in-person requirements — it all happens from wherever you are in the world.</p>
-                </div>
-            </div>
-            <div class="step-row">
-                <div class="step-badge-wrap">
-                    <div class="step-badge">3</div>
-                </div>
-                <div class="step-content">
-                    <h3>Download Your Notarized Document</h3>
-                    <p>Once the notarization is complete, your signed and sealed document will be ready for immediate download directly from your dashboard. You'll receive an email notification as soon as it's ready.</p>
+                <div class="jshot">
+                    {{-- Illustrative stock photography. See public/images/site/CREDITS.md. --}}
+                    <img src="{{ asset('images/site/step-upload-documents.webp') }}"
+                         width="900" height="600" loading="lazy" decoding="async"
+                         alt="A desk seen from above with documents and an open laptop.">
                 </div>
             </div>
-            <div class="step-row">
-                <div class="step-badge-wrap">
-                    <div class="step-badge">4</div>
+
+            <div class="jstep" data-reveal>
+                <div class="jnum">2</div>
+                <div class="jbody">
+                    <h3>Choose your notary and pay</h3>
+                    <p>Browse the notaries listed on the platform and pick the one you want, with their price shown before you commit. Pay by card or bank transfer to confirm the request. Your notary is notified the moment payment clears, and your request moves into their queue.</p>
+                    <span class="jmeta">Nothing starts until payment clears</span>
                 </div>
-                <div class="step-content">
-                    <h3>Receive a Physical Copy (Optional)</h3>
-                    <p>Need a stamped hard copy delivered to your address? We can arrange that too. Simply select the physical copy option during your request and we'll handle delivery.</p>
+                <div class="jshot">
+                    <img src="{{ asset('images/site/home-office-remote.webp') }}"
+                         width="900" height="1350" loading="lazy" decoding="async"
+                         alt="A woman working at a desk in her home office.">
+                </div>
+            </div>
+
+            <div class="jstep" data-reveal>
+                <div class="jnum">3</div>
+                <div class="jbody">
+                    <h3>Verify your identity on a live call</h3>
+                    <p>Your notary accepts the request and a video session is scheduled. On the call they check your identification against the document in front of them and witness your signature. There is no in-person requirement and no office to travel to — a real, licensed notary is simply on the other end of the call.</p>
+                </div>
+                <div class="jshot">
+                    <img src="{{ asset('images/site/step-video-verification.webp') }}"
+                         width="900" height="1350" loading="lazy" decoding="async"
+                         alt="A woman holding documents during a video call at her desk.">
+                </div>
+            </div>
+
+            <div class="jstep" data-reveal>
+                <div class="jnum">4</div>
+                <div class="jbody">
+                    <h3>Download your sealed document</h3>
+                    <p>Your notary applies their signature, stamp and seal to the document and completes the request. We email you as soon as it is ready, and the finished PDF waits in your dashboard for you to download whenever you need it again.</p>
+                </div>
+                <div class="jshot">
+                    <img src="{{ asset('images/site/step-notary-seal.webp') }}"
+                         width="900" height="601" loading="lazy" decoding="async"
+                         alt="A notary pressing a stamp onto a printed document.">
                 </div>
             </div>
         </div>
-        <div style="text-align:center;margin-top:48px;">
+
+        <div class="addon" data-reveal>
+            <div class="addon-ic">
+                <x-heroicon-o-truck style="width:26px;height:26px;"/>
+            </div>
+            <div>
+                <h3>Optional: a stamped physical copy</h3>
+                <p>If you also need the document in hand, tick the physical copy option on the intake form and give us a delivery address. We arrange for a stamped hard copy to be sent to you. This is chosen up front, at the same time you upload — not afterwards.</p>
+            </div>
+        </div>
+
+        <div style="text-align:center;margin-top:56px;">
             <a href="{{ route('register') }}" class="btn btn-primary btn-lg">Start your notarization</a>
         </div>
     </div>
@@ -108,56 +223,58 @@
 
 {{-- FAQ --}}
 <section class="section faq-section">
-    <div class="container" style="max-width:760px;">
-        <div class="section-label center">FAQ</div>
-        <h2 class="section-title center">Frequently asked questions</h2>
+    <div class="container" style="max-width:800px;">
+        <div class="center">
+            <div class="section-label">FAQ</div>
+            <h2 class="section-title">Frequently asked questions</h2>
+        </div>
         <div class="faq-list">
             <div class="faq-item">
                 <button class="faq-q" onclick="toggleFaq(this)">
-                    Is online notarization legally valid? <span class="arrow"><x-heroicon-o-chevron-down style="width:16px;height:16px;display:inline-block;vertical-align:middle;"/></span>
+                    Is online notarization legally valid? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    Yes. Our licensed notaries operate under Nigerian law. Electronic notarization is recognized domestically and internationally. Every document bears the notary's official seal and is SHA-256 hashed for tamper-proof verification.
+                    Every notary on the platform is a licensed notary public operating under Nigerian law, and the document they produce carries their own official seal and signature. We also record a SHA-256 fingerprint of each sealed file, so there is a tamper-evident record of exactly what was issued. Whether a Nigerian notarization is accepted by a particular foreign authority is a question for that authority — some documents additionally need legalisation or an apostille, and we will tell you if we think yours does.
                 </div>
             </div>
             <div class="faq-item">
                 <button class="faq-q" onclick="toggleFaq(this)">
-                    Do I need to be physically present? <span class="arrow"><x-heroicon-o-chevron-down style="width:16px;height:16px;display:inline-block;vertical-align:middle;"/></span>
+                    Do I need to be physically present? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    No — the entire process is online. You connect with your notary via a secure video call. No travel, no office visit, no queues.
+                    No — the entire process is online. You connect with your notary over a secure video call. No travel, no office visit, no queues. You will need a device with a working camera and your identification to hand.
                 </div>
             </div>
             <div class="faq-item">
                 <button class="faq-q" onclick="toggleFaq(this)">
-                    What types of documents can be notarized? <span class="arrow"><x-heroicon-o-chevron-down style="width:16px;height:16px;display:inline-block;vertical-align:middle;"/></span>
+                    What types of documents can be notarized? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    We notarize a wide range of documents including affidavits, statutory declarations, contracts, power of attorney, property paperwork, business agreements, and more. If you're unsure whether your document qualifies, contact us.
+                    Affidavits, property documents, contracts, travel consent letters, academic credentials and immigration documents are the categories our notaries work in most, and statutory declarations, powers of attorney and business agreements fall within them. If you are unsure whether your document qualifies, send it through anyway — the request is reviewed before anything is sealed, and we will come back to you if it belongs in a different category.
                 </div>
             </div>
             <div class="faq-item">
                 <button class="faq-q" onclick="toggleFaq(this)">
-                    How long does it take? <span class="arrow"><x-heroicon-o-chevron-down style="width:16px;height:16px;display:inline-block;vertical-align:middle;"/></span>
+                    How long does it take? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    Most documents are notarized within 24 hours. Many can be completed in as little as 30 minutes, depending on notary availability when you book.
+                    Most documents are notarized within 24 hours, and many are completed in as little as 30 minutes. The clock starts when your payment clears, and the actual time depends on your notary's availability when you book.
                 </div>
             </div>
             <div class="faq-item">
                 <button class="faq-q" onclick="toggleFaq(this)">
-                    Can I get a physical (stamped) copy? <span class="arrow"><x-heroicon-o-chevron-down style="width:16px;height:16px;display:inline-block;vertical-align:middle;"/></span>
+                    Can I get a physical (stamped) copy? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    Yes. When submitting your request you can tick the "physical copy" option and we will arrange for a stamped hard copy to be delivered to your address.
+                    Yes. When submitting your request you can tick the physical copy option and give a delivery address, and we will arrange for a stamped hard copy to be sent to you. It has to be chosen on the intake form, so decide before you pay.
                 </div>
             </div>
             <div class="faq-item">
                 <button class="faq-q" onclick="toggleFaq(this)">
-                    What currencies are accepted? <span class="arrow"><x-heroicon-o-chevron-down style="width:16px;height:16px;display:inline-block;vertical-align:middle;"/></span>
+                    How do I pay? <span class="arrow"><x-heroicon-o-chevron-down style="width:18px;height:18px;display:inline-block;vertical-align:middle;"/></span>
                 </button>
                 <div class="faq-a">
-                    We accept payment in both Nigerian Naira (NGN) and US Dollars (USD), making it convenient for clients both in Nigeria and abroad.
+                    You pay once, after choosing your notary, by card or bank transfer. The price is the one shown on that notary's listing for the service you selected, and you see it before you commit. Requests are currently billed in Nigerian Naira.
                 </div>
             </div>
         </div>
@@ -177,11 +294,14 @@ function toggleFaq(btn) {
     document.querySelectorAll('.faq-q.open').forEach(b => {
         b.classList.remove('open');
         b.nextElementSibling.classList.remove('open');
+        b.setAttribute('aria-expanded', 'false');
     });
     if (!isOpen) {
         btn.classList.add('open');
         answer.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
     }
 }
+document.querySelectorAll('.faq-q').forEach(b => b.setAttribute('aria-expanded', 'false'));
 </script>
 @endsection

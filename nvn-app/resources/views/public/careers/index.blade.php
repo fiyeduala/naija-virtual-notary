@@ -103,7 +103,7 @@
                                 <span class="tag tag-remote">Remote</span>
 
                                 @if (filled($vacancy->employment_type))
-                                    <span class="tag">{{ $vacancy->employment_type }}</span>
+                                    <span class="tag">{{ ucfirst(str_replace('_', ' ', $vacancy->employment_type)) }}</span>
                                 @endif
 
                                 @if (filled($vacancy->location_eligibility))
